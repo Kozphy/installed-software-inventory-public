@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Iterable, Optional, Sequence
 
 from software_inventory.models import SoftwareEntry
+from software_inventory.report import PrepareStats
 
 _UPDATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^KB\d+", re.IGNORECASE),
@@ -231,11 +232,50 @@ def prepare_inventory(
     search: Optional[str] = None,
 ) -> list[SoftwareEntry]:
     """Deduplicate, filter, and sort inventory entries for export."""
-    unique = deduplicate_entries(entries)
-    filtered = filter_entries(
-        unique,
+    prepared, _stats = prepare_inventory_with_stats(
+        entries,
         include_system_components=include_system_components,
         include_updates=include_updates,
         search=search,
     )
-    return sort_entries(filtered)
+    return prepared
+
+
+def prepare_inventory_with_stats(
+    entries: Sequence[SoftwareEntry],
+    *,
+    include_system_components: bool = False,
+    include_updates: bool = False,
+    search: Optional[str] = None,
+) -> tuple[list[SoftwareEntry], PrepareStats]:
+    """Deduplicate, filter, and sort entries while collecting audit counts."""
+    raw_list = list(entries)
+    unique = deduplicate_entries(raw_list)
+
+    filtered_system = 0
+    filtered_updates = 0
+    retained: list[SoftwareEntry] = []
+    needle = search.strip().lower() if search else None
+
+    for entry in unique:
+        if not has_valid_display_name(entry):
+            continue
+        if not include_system_components and entry.system_component:
+            filtered_system += 1
+            continue
+        if not include_updates and is_windows_update(entry):
+            filtered_updates += 1
+            continue
+        if needle is not None and not matches_search(entry, needle):
+            continue
+        retained.append(entry)
+
+    prepared = sort_entries(retained)
+    stats = PrepareStats(
+        raw_entry_count=len(raw_list),
+        after_dedup_count=len(unique),
+        filtered_system_component_count=filtered_system,
+        filtered_update_count=filtered_updates,
+        result_count=len(prepared),
+    )
+    return prepared, stats

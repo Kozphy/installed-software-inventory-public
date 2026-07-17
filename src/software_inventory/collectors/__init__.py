@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
-from software_inventory.collectors.windows_registry import collect_from_registry
+from software_inventory.collectors.windows_registry import (
+    collect_from_registry,
+    describe_collector_sources,
+)
 
-__all__ = ["collect_from_registry"]
+__all__ = ["collect_from_registry", "describe_collector_sources"]

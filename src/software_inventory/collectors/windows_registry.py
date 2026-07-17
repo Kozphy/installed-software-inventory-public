@@ -240,6 +240,16 @@ def collect_source(
     return entries
 
 
+def describe_collector_sources() -> list[str]:
+    """Return human-readable labels for Registry sources that may be scanned."""
+    return [
+        f"HKEY_LOCAL_MACHINE\\{UNINSTALL_SUBKEY} [64-bit view]",
+        f"HKEY_LOCAL_MACHINE\\{UNINSTALL_SUBKEY} [32-bit view]",
+        f"HKEY_LOCAL_MACHINE\\{WOW64_UNINSTALL_SUBKEY}",
+        f"HKEY_CURRENT_USER\\{UNINSTALL_SUBKEY}",
+    ]
+
+
 def collect_from_registry(*, winreg_module: Any | None = None) -> list[SoftwareEntry]:
     """Scan supported Uninstall Registry locations and return raw entries.
 
@@ -265,5 +275,6 @@ __all__ = [
     "WOW64_UNINSTALL_SUBKEY",
     "collect_from_registry",
     "collect_source",
+    "describe_collector_sources",
     "_entry_from_values",
 ]

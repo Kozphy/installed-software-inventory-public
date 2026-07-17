@@ -8,10 +8,12 @@ import shutil
 import sys
 from io import StringIO
 from pathlib import Path
-from typing import Iterable, Optional, TextIO
+from typing import Any, Iterable, Optional, TextIO, Union
 
+from software_inventory.diff import DiffResult, format_diff_table
 from software_inventory.models import CSV_FIELDNAMES, SoftwareEntry
 from software_inventory.normalize import format_size_human
+from software_inventory.report import InventoryReport
 
 TABLE_COLUMNS: tuple[tuple[str, str, int], ...] = (
     ("Name", "name", 36),
@@ -101,40 +103,8 @@ def _safe_write(stream: TextIO, text: str) -> None:
             stream.write(raw.decode(encoding, errors="replace"))
 
 
-def export_table(
-    entries: Iterable[SoftwareEntry],
-    output: Optional[Path] = None,
-    stream: Optional[TextIO] = None,
-) -> None:
-    """Write table-formatted inventory to a file or stdout."""
-    text = format_table(entries)
-    if output is not None:
-        ensure_parent_directory(output)
-        output.write_text(text + "\n", encoding="utf-8")
-    else:
-        target = stream or sys.stdout
-        _safe_write(target, text + "\n")
-
-
-def entries_to_jsonable(entries: Iterable[SoftwareEntry]) -> list[dict]:
-    """Convert entries to a list of dictionaries suitable for JSON serialization."""
-    return [entry.to_dict() for entry in entries]
-
-
-def export_json(
-    entries: Iterable[SoftwareEntry],
-    output: Optional[Path] = None,
-    *,
-    pretty: bool = False,
-    stream: Optional[TextIO] = None,
-) -> None:
-    """Write inventory as UTF-8 JSON to a file or stdout."""
-    payload = entries_to_jsonable(entries)
-    if pretty:
-        text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-    else:
-        text = json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n"
-
+def _write_text(text: str, output: Optional[Path], stream: Optional[TextIO]) -> None:
+    """Write UTF-8 text to a file or stream."""
     if output is not None:
         ensure_parent_directory(output)
         output.write_text(text, encoding="utf-8")
@@ -143,12 +113,54 @@ def export_json(
         _safe_write(target, text)
 
 
+def export_table(
+    entries: Iterable[SoftwareEntry],
+    output: Optional[Path] = None,
+    stream: Optional[TextIO] = None,
+) -> None:
+    """Write table-formatted inventory to a file or stdout."""
+    _write_text(format_table(entries) + "\n", output, stream)
+
+
+def entries_to_jsonable(entries: Iterable[SoftwareEntry]) -> list[dict]:
+    """Convert entries to a list of dictionaries suitable for JSON serialization."""
+    return [entry.to_dict() for entry in entries]
+
+
+def dumps_json(payload: Any, *, pretty: bool = False) -> str:
+    """Serialize ``payload`` to a UTF-8 JSON string."""
+    if pretty:
+        return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n"
+
+
+def export_json(
+    entries: Iterable[SoftwareEntry],
+    output: Optional[Path] = None,
+    *,
+    pretty: bool = False,
+    stream: Optional[TextIO] = None,
+    report: Optional[InventoryReport] = None,
+    legacy_json: bool = False,
+) -> None:
+    """Write inventory as UTF-8 JSON to a file or stdout.
+
+    By default a v1.1 report envelope is written when ``report`` is provided.
+    Pass ``legacy_json=True`` (or omit ``report``) to emit a top-level array.
+    """
+    if legacy_json or report is None:
+        payload: Union[list[dict], dict[str, Any]] = entries_to_jsonable(entries)
+    else:
+        payload = report.to_dict()
+    _write_text(dumps_json(payload, pretty=pretty), output, stream)
+
+
 def export_csv(
     entries: Iterable[SoftwareEntry],
     output: Optional[Path] = None,
     stream: Optional[TextIO] = None,
 ) -> None:
-    """Write inventory as UTF-8 CSV (with BOM-friendly encoding) to a file or stdout."""
+    """Write inventory as UTF-8 CSV to a file or stdout."""
     rows = [entry.to_dict() for entry in entries]
 
     if output is not None:
@@ -161,10 +173,27 @@ def export_csv(
         return
 
     target = stream or sys.stdout
-    # Collect CSV text first so console encoding failures can be handled safely.
     buffer = StringIO()
     writer = csv.DictWriter(buffer, fieldnames=list(CSV_FIELDNAMES), lineterminator="\n")
     writer.writeheader()
     for row in rows:
         writer.writerow({key: row.get(key) for key in CSV_FIELDNAMES})
     _safe_write(target, buffer.getvalue())
+
+
+def export_diff(
+    result: DiffResult,
+    *,
+    format_name: str = "table",
+    output: Optional[Path] = None,
+    pretty: bool = False,
+    stream: Optional[TextIO] = None,
+) -> None:
+    """Write a snapshot diff as table or JSON."""
+    if format_name == "json":
+        _write_text(dumps_json(result.to_dict(), pretty=pretty), output, stream)
+        return
+    if format_name == "table":
+        _write_text(format_diff_table(result), output, stream)
+        return
+    raise ValueError(f"unsupported diff format: {format_name!r}")

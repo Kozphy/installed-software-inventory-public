@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import argparse
 import logging
+import platform
+import socket
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Sequence
 
 from software_inventory import __version__
-from software_inventory.collectors import collect_from_registry
-from software_inventory.exporters import export_csv, export_json, export_table
-from software_inventory.normalize import prepare_inventory
+from software_inventory.collectors import collect_from_registry, describe_collector_sources
+from software_inventory.diff import compare_inventories, load_inventory_file
+from software_inventory.exporters import export_csv, export_diff, export_json, export_table
+from software_inventory.normalize import prepare_inventory_with_stats
+from software_inventory.report import build_report, build_scan_metadata
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -30,13 +35,25 @@ def configure_stdio() -> None:
                 pass
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Create the argument parser for the inventory CLI."""
+def configure_logging(verbose: bool) -> None:
+    """Configure root logging; detailed diagnostics only when verbose."""
+    level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
+
+
+def build_scan_parser() -> argparse.ArgumentParser:
+    """Create the argument parser for inventory scans."""
     parser = argparse.ArgumentParser(
         prog="software_inventory",
         description=(
             "Scan local Windows Uninstall Registry keys and list installed "
-            "software. Read-only: never modifies the Registry or uninstalls apps."
+            "software. Read-only: never modifies the Registry or uninstalls apps. "
+            "Use 'software_inventory diff OLD.json NEW.json' to compare snapshots."
         ),
     )
     parser.add_argument(
@@ -74,6 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pretty-print JSON output (indent=2).",
     )
     parser.add_argument(
+        "--legacy-json",
+        action="store_true",
+        help="Emit a top-level JSON array instead of the v1.1 report envelope.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable detailed diagnostic logging on stderr.",
@@ -86,15 +108,61 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def configure_logging(verbose: bool) -> None:
-    """Configure root logging; detailed diagnostics only when verbose."""
-    level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(levelname)s %(name)s: %(message)s",
-        stream=sys.stderr,
-        force=True,
+def build_diff_parser() -> argparse.ArgumentParser:
+    """Create the argument parser for snapshot comparison."""
+    parser = argparse.ArgumentParser(
+        prog="software_inventory diff",
+        description="Compare two JSON inventory snapshots and report changes.",
     )
+    parser.add_argument(
+        "old_path",
+        type=Path,
+        metavar="OLD.json",
+        help="Previous inventory snapshot (legacy array or v1.1 envelope).",
+    )
+    parser.add_argument(
+        "new_path",
+        type=Path,
+        metavar="NEW.json",
+        help="Current inventory snapshot (legacy array or v1.1 envelope).",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("table", "json"),
+        default="table",
+        help="Diff output format (default: table).",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write the diff to PATH instead of stdout.",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print JSON diff output (indent=2).",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable detailed diagnostic logging on stderr.",
+    )
+    return parser
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Return the default scan parser (used by tests and ``--help``)."""
+    return build_scan_parser()
+
+
+def resolve_hostname() -> str:
+    """Return the local hostname without raising on resolution failure."""
+    try:
+        return socket.gethostname() or "unknown"
+    except OSError:
+        return "unknown"
 
 
 def run_inventory(
@@ -105,12 +173,17 @@ def run_inventory(
     include_system_components: bool = False,
     include_updates: bool = False,
     pretty: bool = False,
+    legacy_json: bool = False,
     entries=None,
+    hostname: Optional[str] = None,
+    platform_name: Optional[str] = None,
+    collector_sources: Optional[Sequence[str]] = None,
 ) -> int:
     """Collect (or accept), prepare, and export inventory entries.
 
     Returns a process exit code.
     """
+    started_at = datetime.now(timezone.utc)
     try:
         raw = list(entries) if entries is not None else collect_from_registry()
     except OSError as exc:
@@ -121,18 +194,40 @@ def run_inventory(
         print(f"error: failed to collect installed software: {exc}", file=sys.stderr)
         return EXIT_RUNTIME
 
-    prepared = prepare_inventory(
+    prepared, stats = prepare_inventory_with_stats(
         raw,
         include_system_components=include_system_components,
         include_updates=include_updates,
         search=search,
     )
+    completed_at = datetime.now(timezone.utc)
+
+    sources = (
+        list(collector_sources)
+        if collector_sources is not None
+        else describe_collector_sources()
+    )
+    scan = build_scan_metadata(
+        started_at=started_at,
+        completed_at=completed_at,
+        hostname=hostname if hostname is not None else resolve_hostname(),
+        platform=platform_name if platform_name is not None else platform.platform(),
+        collector_sources=sources,
+        stats=stats,
+    )
+    report = build_report(prepared, scan)
 
     try:
         if format_name == "table":
             export_table(prepared, output=output)
         elif format_name == "json":
-            export_json(prepared, output=output, pretty=pretty)
+            export_json(
+                prepared,
+                output=output,
+                pretty=pretty,
+                report=report,
+                legacy_json=legacy_json,
+            )
         elif format_name == "csv":
             export_csv(prepared, output=output)
         else:  # pragma: no cover - argparse restricts choices
@@ -145,11 +240,59 @@ def run_inventory(
     return EXIT_OK
 
 
+def run_diff(
+    *,
+    old_path: Path,
+    new_path: Path,
+    format_name: str = "table",
+    output: Optional[Path] = None,
+    pretty: bool = False,
+) -> int:
+    """Compare two inventory snapshots and export the diff."""
+    try:
+        old_entries = load_inventory_file(old_path)
+        new_entries = load_inventory_file(new_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    result = compare_inventories(old_entries, new_entries)
+    try:
+        export_diff(
+            result,
+            format_name=format_name,
+            output=output,
+            pretty=pretty,
+        )
+    except OSError as exc:
+        print(f"error: failed to write output: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    return EXIT_OK
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Parse CLI arguments and run the inventory scan."""
+    """Parse CLI arguments and run a scan or diff command."""
     configure_stdio()
-    parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    args_list = list(argv) if argv is not None else sys.argv[1:]
+
+    if args_list and args_list[0] == "diff":
+        parser = build_diff_parser()
+        args = parser.parse_args(args_list[1:])
+        configure_logging(args.verbose)
+        return run_diff(
+            old_path=args.old_path,
+            new_path=args.new_path,
+            format_name=args.format,
+            output=args.output,
+            pretty=args.pretty,
+        )
+
+    parser = build_scan_parser()
+    args = parser.parse_args(args_list)
     configure_logging(args.verbose)
 
     if sys.platform != "win32":
@@ -167,6 +310,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         include_system_components=args.include_system_components,
         include_updates=args.include_updates,
         pretty=args.pretty,
+        legacy_json=args.legacy_json,
     )
 
 
