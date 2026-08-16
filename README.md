@@ -54,6 +54,7 @@ python -m software_inventory --search microsoft
 python -m software_inventory --include-system-components
 python -m software_inventory --include-updates
 python -m software_inventory --format json --pretty --verbose
+python -m software_inventory --from-json reports/latest.json --format csv --output reports/latest.csv
 ```
 
 ### Snapshot comparison
@@ -76,6 +77,7 @@ python -m software_inventory diff reports/old.json reports/new.json --format jso
 | `--include-updates` | Show Windows updates / hotfixes |
 | `--pretty` | Indent JSON output |
 | `--legacy-json` | Emit a top-level JSON array (v1.0 shape) instead of the v1.1 envelope |
+| `--from-json PATH` | Replay a JSON snapshot instead of scanning the Registry |
 | `--verbose` | Detailed diagnostics on stderr |
 | `--version` | Print package version |
 
@@ -96,7 +98,19 @@ python -m software_inventory diff reports/old.json reports/new.json --format jso
 | `2` | Usage error (argparse) |
 | `3` | Unsupported platform (non-Windows for scans) |
 
-`diff` works on any platform that can read the JSON files; live Registry scanning requires Windows.
+`diff` and `--from-json` work on any platform that can read the JSON files; live Registry scanning requires Windows.
+
+## CLI harness
+
+The process harness runs the real CLI as a subprocess against fixture snapshots. It does **not** scan the live Registry (`SOFTWARE_INVENTORY_SKIP_LIVE_SCAN=1`).
+
+```powershell
+python scripts/run_cli_harness.py
+python scripts/run_cli_harness.py --keep-transcripts harness-output
+python -m pytest tests/test_cli_harness.py -q
+```
+
+It checks help/version, usage and runtime exit codes, table/JSON/CSV export, `--legacy-json`, UTF-8 names, snapshot `diff`, and that a live scan is blocked when the skip flag is set.
 
 ## JSON schema (v1.1)
 
@@ -273,7 +287,8 @@ installed-software-inventory/
 ├── .gitignore
 ├── .github/workflows/ci.yml
 ├── scripts/
-│   └── run_inventory.ps1
+│   ├── run_inventory.ps1
+│   └── run_cli_harness.py
 ├── src/
 │   └── software_inventory/
 │       ├── __init__.py
@@ -288,12 +303,14 @@ installed-software-inventory/
 │           ├── __init__.py
 │           └── windows_registry.py
 └── tests/
+    ├── fixtures/cli/
     ├── test_normalize.py
     ├── test_deduplication.py
     ├── test_exporters.py
     ├── test_registry_parsing.py
     ├── test_report.py
-    └── test_diff.py
+    ├── test_diff.py
+    └── test_cli_harness.py
 ```
 
 ## License

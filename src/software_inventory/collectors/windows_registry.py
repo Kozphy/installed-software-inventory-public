@@ -7,6 +7,7 @@ never invokes uninstall commands. It does not use Win32_Product.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -34,6 +35,12 @@ class RegistrySource:
     scope: str
     architecture: str
     access_name: str
+
+
+def live_scan_disabled() -> bool:
+    """Return True when the environment forbids touching the live Registry."""
+    value = os.environ.get("SOFTWARE_INVENTORY_SKIP_LIVE_SCAN", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _require_windows() -> None:
@@ -258,6 +265,11 @@ def collect_from_registry(*, winreg_module: Any | None = None) -> list[SoftwareE
     winreg_module:
         Optional stand-in for the ``winreg`` module (used by tests).
     """
+    if winreg_module is None and live_scan_disabled():
+        raise RuntimeError(
+            "live Registry scan is disabled because "
+            "SOFTWARE_INVENTORY_SKIP_LIVE_SCAN is set"
+        )
     winreg = winreg_module if winreg_module is not None else _load_winreg()
     collected: list[SoftwareEntry] = []
 
@@ -276,5 +288,6 @@ __all__ = [
     "collect_from_registry",
     "collect_source",
     "describe_collector_sources",
+    "live_scan_disabled",
     "_entry_from_values",
 ]

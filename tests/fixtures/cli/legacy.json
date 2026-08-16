@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Legacy App",
+    "version": "1.0",
+    "publisher": "Legacy Co",
+    "install_date": "2026-07-17",
+    "install_location": "C:\\Program Files\\Legacy",
+    "estimated_size_kb": 100,
+    "scope": "machine",
+    "architecture": "32-bit",
+    "uninstall_string": "legacy-uninstall.exe",
+    "quiet_uninstall_string": null,
+    "registry_path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Legacy",
+    "release_type": null,
+    "system_component": false
+  }
+]

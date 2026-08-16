@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.1",
+  "scan": {
+    "started_at": "2026-07-18T06:00:00Z",
+    "completed_at": "2026-07-18T06:00:01Z",
+    "duration_ms": 1000,
+    "hostname": "harness-host",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "collector_sources": ["fixture"],
+    "raw_entry_count": 4,
+    "deduplicated_count": 0,
+    "filtered_system_component_count": 0,
+    "filtered_update_count": 0,
+    "result_count": 4
+  },
+  "software": [
+    {
+      "name": "Keep App",
+      "version": "1.0.0",
+      "publisher": "Contoso",
+      "install_date": "2026-01-01",
+      "install_location": "C:\\Program Files\\Keep",
+      "estimated_size_kb": 1024,
+      "scope": "machine",
+      "architecture": "64-bit",
+      "uninstall_string": "keep-uninstall.exe",
+      "quiet_uninstall_string": null,
+      "registry_path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Keep",
+      "release_type": null,
+      "system_component": false
+    },
+    {
+      "name": "Upgrade App",
+      "version": "2.0.0",
+      "publisher": "Contoso",
+      "install_date": "2026-07-18",
+      "install_location": "C:\\Program Files\\Upgrade",
+      "estimated_size_kb": 4096,
+      "scope": "machine",
+      "architecture": "64-bit",
+      "uninstall_string": "upgrade-uninstall.exe",
+      "quiet_uninstall_string": null,
+      "registry_path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Upgrade",
+      "release_type": null,
+      "system_component": false
+    },
+    {
+      "name": "New Tool",
+      "version": "0.9.0",
+      "publisher": "Vendor Inc",
+      "install_date": "2026-07-18",
+      "install_location": "C:\\Program Files\\NewTool",
+      "estimated_size_kb": 256,
+      "scope": "current_user",
+      "architecture": "unknown",
+      "uninstall_string": "new-uninstall.exe",
+      "quiet_uninstall_string": null,
+      "registry_path": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\NewTool",
+      "release_type": null,
+      "system_component": false
+    },
+    {
+      "name": "日本語エディタ",
+      "version": "1.2.3",
+      "publisher": "Example Inc",
+      "install_date": "2026-07-17",
+      "install_location": "C:\\Program Files\\JpEditor",
+      "estimated_size_kb": 870400,
+      "scope": "machine",
+      "architecture": "64-bit",
+      "uninstall_string": "C:\\Program Files\\JpEditor\\uninstall.exe",
+      "quiet_uninstall_string": "C:\\Program Files\\JpEditor\\uninstall.exe /S",
+      "registry_path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JpEditor",
+      "release_type": null,
+      "system_component": false
+    }
+  ]
+}

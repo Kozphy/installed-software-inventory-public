@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from software_inventory.cli import EXIT_OK, run_inventory
+from software_inventory.cli import EXIT_OK, EXIT_RUNTIME, main, run_inventory
 from software_inventory.exporters import export_json
 from software_inventory.models import SoftwareEntry
 from software_inventory.normalize import prepare_inventory_with_stats
@@ -157,6 +157,30 @@ class ReportEnvelopeTests(unittest.TestCase):
             self.assertEqual(code, EXIT_OK)
             payload = json.loads(path.read_text(encoding="utf-8"))
             self.assertIsInstance(payload, list)
+
+    def test_main_from_json_replay(self) -> None:
+        fixture = Path(__file__).resolve().parent / "fixtures" / "cli" / "legacy.json"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out.json"
+            code = main(
+                [
+                    "--from-json",
+                    str(fixture),
+                    "--format",
+                    "json",
+                    "--legacy-json",
+                    "--output",
+                    str(out),
+                ]
+            )
+            self.assertEqual(code, EXIT_OK)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertIsInstance(payload, list)
+            self.assertEqual(payload[0]["name"], "Legacy App")
+
+    def test_main_from_json_missing_file(self) -> None:
+        code = main(["--from-json", str(Path("no-such-snapshot.json"))])
+        self.assertEqual(code, EXIT_RUNTIME)
 
 
 class PayloadLoadingTests(unittest.TestCase):

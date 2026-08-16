@@ -29,10 +29,15 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Compile check
-        run: python -m compileall -q src tests
+        run: python -m compileall -q src tests scripts
 
       - name: Run tests
         run: python -m pytest -q
         env:
-          # Tests use fixtures only; never scan the runner Registry.
+          # Tests and the CLI harness use fixtures only; never scan the runner Registry.
+          SOFTWARE_INVENTORY_SKIP_LIVE_SCAN: "1"
+
+      - name: CLI harness
+        run: python scripts/run_cli_harness.py
+        env:
           SOFTWARE_INVENTORY_SKIP_LIVE_SCAN: "1"

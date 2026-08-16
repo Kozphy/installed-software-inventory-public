@@ -39,4 +39,5 @@ Desktop.ini
 
 # Project outputs
 reports/
+harness-output/
 *.log

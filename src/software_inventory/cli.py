@@ -96,6 +96,16 @@ def build_scan_parser() -> argparse.ArgumentParser:
         help="Emit a top-level JSON array instead of the v1.1 report envelope.",
     )
     parser.add_argument(
+        "--from-json",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Load a JSON snapshot instead of scanning the Registry "
+            "(legacy array or v1.1 envelope). Works on any platform."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable detailed diagnostic logging on stderr.",
@@ -294,6 +304,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_scan_parser()
     args = parser.parse_args(args_list)
     configure_logging(args.verbose)
+
+    if args.from_json is not None:
+        try:
+            entries = load_inventory_file(args.from_json)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_RUNTIME
+        return run_inventory(
+            format_name=args.format,
+            output=args.output,
+            search=args.search,
+            include_system_components=args.include_system_components,
+            include_updates=args.include_updates,
+            pretty=args.pretty,
+            legacy_json=args.legacy_json,
+            entries=entries,
+            collector_sources=[f"json-snapshot:{args.from_json}"],
+        )
 
     if sys.platform != "win32":
         print(
