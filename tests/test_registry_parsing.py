@@ -1,4 +1,9 @@
-"""Unit tests for Registry value → SoftwareEntry conversion (no live Registry)."""
+"""
+Unit tests for Registry value → SoftwareEntry conversion (no live Registry).
+
+Validates the collector's mapping of Uninstall value maps into the shared
+``SoftwareEntry`` model, including missing/invalid fields.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,8 @@ from software_inventory.collectors.windows_registry import _entry_from_values
 
 
 class RegistryValueParsingTests(unittest.TestCase):
+    """``_entry_from_values`` mapping from Uninstall value maps."""
+
     def test_missing_values_do_not_crash(self) -> None:
         entry = _entry_from_values(
             {

@@ -1,4 +1,10 @@
-"""Process-level CLI harness tests (subprocess, fixtures, no live Registry)."""
+"""
+Process-level CLI harness tests (subprocess, fixtures, no live Registry).
+
+Verifies that ``scripts/run_cli_harness.py`` loads correctly, that the full
+contract suite passes, and that ``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN`` blocks
+``collect_from_registry`` so CI never touches Uninstall keys.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +20,18 @@ from software_inventory.collectors.windows_registry import collect_from_registry
 
 
 def load_harness() -> ModuleType:
-    """Load ``scripts/run_cli_harness.py`` as a module."""
+    """
+    Load ``scripts/run_cli_harness.py`` as an importable module.
+
+    The harness lives under ``scripts/`` (not a package), so tests load it via
+    ``importlib`` instead of a normal package import.
+
+    Returns:
+        ModuleType: Loaded harness module.
+
+    Raises:
+        RuntimeError: When the module spec cannot be created.
+    """
     path = Path(__file__).resolve().parents[1] / "scripts" / "run_cli_harness.py"
     spec = importlib.util.spec_from_file_location("run_cli_harness", path)
     if spec is None or spec.loader is None:
@@ -29,6 +46,8 @@ HARNESS = load_harness()
 
 
 class CliHarnessTests(unittest.TestCase):
+    """End-to-end subprocess contract checks for the CLI harness."""
+
     def test_all_harness_cases_pass(self) -> None:
         code = HARNESS.run_harness()
         self.assertEqual(code, 0)
@@ -50,6 +69,8 @@ class CliHarnessTests(unittest.TestCase):
 
 
 class LiveScanGuardTests(unittest.TestCase):
+    """Ensure the skip-env guard prevents accidental live Registry access."""
+
     def test_skip_env_blocks_collect_from_registry(self) -> None:
         previous = os.environ.get("SOFTWARE_INVENTORY_SKIP_LIVE_SCAN")
         os.environ["SOFTWARE_INVENTORY_SKIP_LIVE_SCAN"] = "1"

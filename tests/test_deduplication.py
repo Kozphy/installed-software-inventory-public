@@ -1,4 +1,9 @@
-"""Unit tests for deterministic software-entry deduplication."""
+"""
+Unit tests for deterministic software-entry deduplication.
+
+Ensures overlapping Uninstall views collapse to one row and that the richer
+metadata record wins — required for stable table/JSON/CSV exports.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,15 @@ from software_inventory.normalize import deduplicate_entries, deduplication_key
 
 
 def make_entry(**overrides) -> SoftwareEntry:
+    """
+    Build a ``SoftwareEntry`` fixture for deduplication tests.
+
+    Args:
+        **overrides: Field overrides applied on top of the Shared App template.
+
+    Returns:
+        SoftwareEntry: Immutable test row.
+    """
     data = {
         "name": "Shared App",
         "version": "2.0",
@@ -29,6 +43,8 @@ def make_entry(**overrides) -> SoftwareEntry:
 
 
 class DeduplicationTests(unittest.TestCase):
+    """Key equality, richness preference, and deterministic tie-breaking."""
+
     def test_identical_keys_collapse(self) -> None:
         sparse = make_entry(
             registry_path=r"HKEY_LOCAL_MACHINE\A\Sparse",

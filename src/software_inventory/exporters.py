@@ -1,4 +1,16 @@
-"""Export inventory results as table, JSON, or CSV."""
+"""
+Export prepared inventory (and diffs) as table, JSON, or CSV.
+
+Last pipeline stage — no Registry access:
+
+    prepared SoftwareEntry / DiffResult
+        → UTF-8 file (parents created) or console
+        → table | JSON envelope/array | CSV | diff table/JSON
+
+File outputs are always UTF-8. Console writes go through ``_safe_write`` so
+non-ASCII display names degrade safely on legacy Windows code pages.
+"""
+
 
 from __future__ import annotations
 
@@ -27,14 +39,30 @@ TABLE_COLUMNS: tuple[tuple[str, str, int], ...] = (
 
 
 def ensure_parent_directory(path: Path) -> None:
-    """Create the parent directory of ``path`` when it does not already exist."""
+    """
+    Create the parent directory of ``path`` when it does not already exist.
+
+    Lets ``--output reports/foo.json`` succeed without a pre-created folder.
+
+    Args:
+        path (Path): Target file path whose parents should exist.
+    """
     parent = path.parent
     if parent and str(parent) not in {"", "."}:
         parent.mkdir(parents=True, exist_ok=True)
 
 
 def _cell(value: Optional[str], width: int) -> str:
-    """Truncate and pad a cell so the table layout stays stable."""
+    """
+    Truncate and pad a cell so the console table layout stays stable.
+
+    Args:
+        value (str | None): Cell text.
+        width (int): Fixed column width.
+
+    Returns:
+        str: Left-padded/truncated cell including an ellipsis when truncated.
+    """
     text = value or ""
     if len(text) > width:
         if width <= 1:
@@ -44,7 +72,15 @@ def _cell(value: Optional[str], width: int) -> str:
 
 
 def _row_values(entry: SoftwareEntry) -> dict[str, str]:
-    """Map an entry to display strings for the console table."""
+    """
+    Map an entry to display strings for the console table.
+
+    Args:
+        entry (SoftwareEntry): Inventory row.
+
+    Returns:
+        dict[str, str]: Column key → display value (human size for Size).
+    """
     return {
         "name": entry.name,
         "version": entry.version or "",
@@ -57,7 +93,19 @@ def _row_values(entry: SoftwareEntry) -> dict[str, str]:
 
 
 def format_table(entries: Iterable[SoftwareEntry]) -> str:
-    """Render a readable fixed-width table for console output."""
+    """
+    Render a readable fixed-width table for console output.
+
+    Args:
+        entries (Iterable[SoftwareEntry]): Prepared inventory rows.
+
+    Returns:
+        str: Multi-line table text (empty-state message when no rows).
+
+    Notes:
+        Shrinks the Name column when the terminal is narrower than the default
+        layout so columns do not wrap poorly on small consoles.
+    """
     rows = [_row_values(entry) for entry in entries]
     term_width = shutil.get_terminal_size((120, 24)).columns
     # Scale name column if the terminal is narrower than the default layout.
@@ -88,7 +136,16 @@ def format_table(entries: Iterable[SoftwareEntry]) -> str:
 
 
 def _safe_write(stream: TextIO, text: str) -> None:
-    """Write text to a stream, replacing characters the console cannot encode."""
+    """
+    Write text to a stream, replacing characters the console cannot encode.
+
+    Protects non-ASCII display names (e.g. Japanese app names) on legacy
+    Windows code pages when writing to stdout.
+
+    Args:
+        stream (TextIO): Destination stream.
+        text (str): UTF-8 text to write.
+    """
     try:
         stream.write(text)
     except UnicodeEncodeError:
@@ -104,7 +161,14 @@ def _safe_write(stream: TextIO, text: str) -> None:
 
 
 def _write_text(text: str, output: Optional[Path], stream: Optional[TextIO]) -> None:
-    """Write UTF-8 text to a file or stream."""
+    """
+    Write UTF-8 text to a file or stream.
+
+    Args:
+        text (str): Content to write.
+        output (Path | None): File path when writing to disk.
+        stream (TextIO | None): Stream override; defaults to stdout.
+    """
     if output is not None:
         ensure_parent_directory(output)
         output.write_text(text, encoding="utf-8")
@@ -118,17 +182,41 @@ def export_table(
     output: Optional[Path] = None,
     stream: Optional[TextIO] = None,
 ) -> None:
-    """Write table-formatted inventory to a file or stdout."""
+    """
+    Write table-formatted inventory to a file or stdout.
+
+    Args:
+        entries (Iterable[SoftwareEntry]): Prepared inventory rows.
+        output (Path | None): Optional destination file.
+        stream (TextIO | None): Optional stream (stdout when omitted).
+    """
     _write_text(format_table(entries) + "\n", output, stream)
 
 
 def entries_to_jsonable(entries: Iterable[SoftwareEntry]) -> list[dict]:
-    """Convert entries to a list of dictionaries suitable for JSON serialization."""
+    """
+    Convert entries to dictionaries suitable for JSON serialization.
+
+    Args:
+        entries (Iterable[SoftwareEntry]): Inventory rows.
+
+    Returns:
+        list[dict]: Flat dicts matching ``SoftwareEntry`` field names.
+    """
     return [entry.to_dict() for entry in entries]
 
 
 def dumps_json(payload: Any, *, pretty: bool = False) -> str:
-    """Serialize ``payload`` to a UTF-8 JSON string."""
+    """
+    Serialize ``payload`` to a UTF-8 JSON string.
+
+    Args:
+        payload (Any): JSON-serializable object.
+        pretty (bool): Indent with 2 spaces when True.
+
+    Returns:
+        str: JSON text ending with a newline.
+    """
     if pretty:
         return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n"
@@ -143,10 +231,23 @@ def export_json(
     report: Optional[InventoryReport] = None,
     legacy_json: bool = False,
 ) -> None:
-    """Write inventory as UTF-8 JSON to a file or stdout.
+    """
+    Write inventory JSON for humans, scripts, and snapshot archives.
 
-    By default a v1.1 report envelope is written when ``report`` is provided.
-    Pass ``legacy_json=True`` (or omit ``report``) to emit a top-level array.
+    Prefer the v1.1 envelope when ``report`` is provided (default CLI path).
+    Emit a bare array when ``legacy_json=True`` **or** ``report is None``
+    (unit tests / v1.0 consumers).
+
+    Args:
+        entries (Iterable[SoftwareEntry]): Prepared rows. Used for array mode;
+            in envelope mode the software list comes from ``report.software``.
+        output (Path | None): File path; parent dirs are created as needed.
+            Files are always UTF-8. Console writes may replace unencodable
+            glyphs on legacy code pages.
+        pretty (bool): Indent with 2 spaces when True.
+        stream (TextIO | None): Stream override; defaults to stdout.
+        report (InventoryReport | None): Envelope to emit when not legacy.
+        legacy_json (bool): Force top-level array output when True.
     """
     if legacy_json or report is None:
         payload: Union[list[dict], dict[str, Any]] = entries_to_jsonable(entries)
@@ -160,7 +261,17 @@ def export_csv(
     output: Optional[Path] = None,
     stream: Optional[TextIO] = None,
 ) -> None:
-    """Write inventory as UTF-8 CSV to a file or stdout."""
+    """
+    Write inventory as UTF-8 CSV to a file or stdout.
+
+    Column order follows ``CSV_FIELDNAMES`` so spreadsheets stay stable across
+    releases.
+
+    Args:
+        entries (Iterable[SoftwareEntry]): Prepared inventory rows.
+        output (Path | None): Optional destination file.
+        stream (TextIO | None): Optional stream (stdout when omitted).
+    """
     rows = [entry.to_dict() for entry in entries]
 
     if output is not None:
@@ -189,7 +300,19 @@ def export_diff(
     pretty: bool = False,
     stream: Optional[TextIO] = None,
 ) -> None:
-    """Write a snapshot diff as table or JSON."""
+    """
+    Write a snapshot diff as table or JSON.
+
+    Args:
+        result (DiffResult): Comparison output from ``compare_inventories``.
+        format_name (str): ``table`` or ``json``.
+        output (Path | None): Optional destination file.
+        pretty (bool): Pretty-print JSON when True.
+        stream (TextIO | None): Optional stream (stdout when omitted).
+
+    Raises:
+        ValueError: When ``format_name`` is not supported.
+    """
     if format_name == "json":
         _write_text(dumps_json(result.to_dict(), pretty=pretty), output, stream)
         return

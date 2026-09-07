@@ -1,4 +1,20 @@
-"""Command-line interface for Installed Software Inventory."""
+"""
+Command-line interface — the product surface for humans and automation.
+
+Wires the inventory pipeline and the snapshot ``diff`` subcommand:
+
+    Scan:
+        flags → Registry | ``--from-json`` → prepare → report → table/json/csv
+    Diff:
+        OLD.json + NEW.json → compare → table/json
+
+Public exit-code contract (do not change lightly):
+    0 success · 1 runtime/I/O (incl. skip-live-scan RuntimeError on Windows) ·
+    2 usage (argparse) · 3 unsupported platform for live scans.
+
+Read-only by design: never modifies the Registry or uninstalls software.
+"""
+
 
 from __future__ import annotations
 
@@ -25,7 +41,12 @@ EXIT_UNSUPPORTED = 3
 
 
 def configure_stdio() -> None:
-    """Prefer UTF-8 on stdout/stderr so non-ASCII display names print safely."""
+    """
+    Prefer UTF-8 on stdout/stderr so non-ASCII display names print safely.
+
+    Best-effort only: failures are ignored because some hosts lack
+    ``reconfigure`` or reject encoding changes mid-stream.
+    """
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
@@ -36,7 +57,12 @@ def configure_stdio() -> None:
 
 
 def configure_logging(verbose: bool) -> None:
-    """Configure root logging; detailed diagnostics only when verbose."""
+    """
+    Configure root logging; detailed diagnostics only when verbose.
+
+    Args:
+        verbose (bool): When True, set DEBUG; otherwise WARNING on stderr.
+    """
     level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
         level=level,
@@ -47,7 +73,12 @@ def configure_logging(verbose: bool) -> None:
 
 
 def build_scan_parser() -> argparse.ArgumentParser:
-    """Create the argument parser for inventory scans."""
+    """
+    Create the argument parser for inventory scans.
+
+    Returns:
+        argparse.ArgumentParser: Parser for format/output/filter/from-json flags.
+    """
     parser = argparse.ArgumentParser(
         prog="software_inventory",
         description=(
@@ -119,7 +150,12 @@ def build_scan_parser() -> argparse.ArgumentParser:
 
 
 def build_diff_parser() -> argparse.ArgumentParser:
-    """Create the argument parser for snapshot comparison."""
+    """
+    Create the argument parser for snapshot comparison.
+
+    Returns:
+        argparse.ArgumentParser: Parser for ``diff OLD.json NEW.json`` options.
+    """
     parser = argparse.ArgumentParser(
         prog="software_inventory diff",
         description="Compare two JSON inventory snapshots and report changes.",
@@ -163,12 +199,22 @@ def build_diff_parser() -> argparse.ArgumentParser:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Return the default scan parser (used by tests and ``--help``)."""
+    """
+    Return the default scan parser (used by tests and ``--help``).
+
+    Returns:
+        argparse.ArgumentParser: Same object as ``build_scan_parser()``.
+    """
     return build_scan_parser()
 
 
 def resolve_hostname() -> str:
-    """Return the local hostname without raising on resolution failure."""
+    """
+    Resolve the local hostname without raising on resolution failure.
+
+    Returns:
+        str: Hostname string, or ``unknown`` when lookup fails or is empty.
+    """
     try:
         return socket.gethostname() or "unknown"
     except OSError:
@@ -189,9 +235,33 @@ def run_inventory(
     platform_name: Optional[str] = None,
     collector_sources: Optional[Sequence[str]] = None,
 ) -> int:
-    """Collect (or accept), prepare, and export inventory entries.
+    """
+    Run one inventory pass: collect/accept → prepare → export.
 
-    Returns a process exit code.
+    Shared by live Registry scans, ``--from-json`` replay, and unit tests that
+    inject ``entries``. Timing in scan metadata spans collection through prepare
+    (export I/O is outside ``duration_ms``).
+
+    Args:
+        format_name (str): ``table``, ``json``, or ``csv``.
+        output (Path | None): Optional output file path.
+        search (str | None): Optional case-insensitive search needle.
+        include_system_components (bool): Keep SystemComponent rows when True.
+        include_updates (bool): Keep update/hotfix rows when True.
+        pretty (bool): Pretty-print JSON when True.
+        legacy_json (bool): Emit top-level JSON array when True.
+        entries: Preloaded ``SoftwareEntry`` iterable; when None, calls
+            ``collect_from_registry()``.
+        hostname (str | None): Override for scan metadata hostname.
+        platform_name (str | None): Override for scan metadata platform.
+        collector_sources (Sequence[str] | None): Override source labels
+            (``--from-json`` stamps ``json-snapshot:…`` here).
+
+    Returns:
+        int: ``EXIT_OK`` on success. ``OSError`` from collection →
+        ``EXIT_UNSUPPORTED``; other collection failures (including live-scan
+        skip ``RuntimeError``) → ``EXIT_RUNTIME``; write failures →
+        ``EXIT_RUNTIME``; unknown format → ``EXIT_USAGE``.
     """
     started_at = datetime.now(timezone.utc)
     try:
@@ -258,7 +328,20 @@ def run_diff(
     output: Optional[Path] = None,
     pretty: bool = False,
 ) -> int:
-    """Compare two inventory snapshots and export the diff."""
+    """
+    Compare two inventory snapshots and export the diff.
+
+    Args:
+        old_path (Path): Previous snapshot JSON path.
+        new_path (Path): Current snapshot JSON path.
+        format_name (str): ``table`` or ``json``.
+        output (Path | None): Optional output file path.
+        pretty (bool): Pretty-print JSON when True.
+
+    Returns:
+        int: ``EXIT_OK`` on success, ``EXIT_RUNTIME`` on load/write failures,
+        ``EXIT_USAGE`` on unsupported format.
+    """
     try:
         old_entries = load_inventory_file(old_path)
         new_entries = load_inventory_file(new_path)
@@ -285,7 +368,22 @@ def run_diff(
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Parse CLI arguments and run a scan or diff command."""
+    """
+    Dispatch ``diff`` vs scan, including ``--from-json`` replay on any OS.
+
+    Args:
+        argv (Sequence[str] | None): Args without the program name; defaults to
+            ``sys.argv[1:]``.
+
+    Returns:
+        int: Exit code from ``run_diff`` / ``run_inventory``, or
+        ``EXIT_UNSUPPORTED`` when a live scan is requested off Windows.
+
+    Notes:
+        Platform gate applies only to live Registry scans. ``diff`` and
+        ``--from-json`` are intentionally cross-platform so CI can exercise the
+        CLI without a Windows hive.
+    """
     configure_stdio()
     args_list = list(argv) if argv is not None else sys.argv[1:]
 

@@ -1,4 +1,9 @@
-"""Unit tests for table, JSON, and CSV exporters."""
+"""
+Unit tests for table, JSON, and CSV exporters.
+
+Covers the final pipeline stage: UTF-8 file writes, directory creation,
+legacy JSON arrays, and human-readable table sizing — no live Registry.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,15 @@ from software_inventory.models import SoftwareEntry
 
 
 def make_entry(**overrides) -> SoftwareEntry:
+    """
+    Build a ``SoftwareEntry`` fixture for exporter tests.
+
+    Args:
+        **overrides: Field overrides applied on top of the Sample App template.
+
+    Returns:
+        SoftwareEntry: Immutable test row.
+    """
     data = {
         "name": "Sample App",
         "version": "3.2.1",
@@ -38,6 +52,8 @@ def make_entry(**overrides) -> SoftwareEntry:
 
 
 class ExporterTests(unittest.TestCase):
+    """JSON/CSV/table export shapes and UTF-8 file I/O."""
+
     def setUp(self) -> None:
         self.entries = [
             make_entry(),

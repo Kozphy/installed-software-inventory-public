@@ -1,8 +1,26 @@
-"""Read installed software from Windows Uninstall Registry keys.
-
-This module is intentionally read-only: it never writes Registry values and
-never invokes uninstall commands. It does not use Win32_Product.
 """
+Windows Uninstall Registry collector (read-only discovery).
+
+First stage of a live scan: enumerate traditional Uninstall keys and emit raw
+``SoftwareEntry`` rows for prepare/export.
+
+    HKLM 64/32-bit views + WOW6432Node + HKCU
+        → raw SoftwareEntry list (unfiltered, may contain duplicates)
+        → normalize.prepare_inventory* → report/export
+
+Safety product choices:
+    * Never writes Registry values or runs uninstall commands.
+    * Avoids WMI ``Win32_Product`` (queries can trigger Windows Installer repair).
+    * Standard-user readable keys only; protected keys are skipped quietly.
+    * Honors ``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN`` so CI/harness cannot touch
+      the live hive.
+
+Coverage limits (by design of Uninstall keys, not bugs):
+    Microsoft Store / MSIX apps, portable binaries, and some package-manager
+    installs may never appear. Empty ``DisplayName`` subkeys are dropped when
+    mapped to ``SoftwareEntry``.
+"""
+
 
 from __future__ import annotations
 
@@ -28,7 +46,13 @@ WOW64_UNINSTALL_SUBKEY = r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion
 
 @dataclass(frozen=True)
 class RegistrySource:
-    """Describes one Uninstall Registry hive/view to scan."""
+    """
+    Describes one Uninstall Registry hive/view to scan.
+
+    Responsibilities:
+        * Capture hive path, install scope, architecture label, and access mask
+          name so ``collect_source`` can open the correct 32/64-bit view.
+    """
 
     hive_name: str
     subkey: str
@@ -38,13 +62,27 @@ class RegistrySource:
 
 
 def live_scan_disabled() -> bool:
-    """Return True when the environment forbids touching the live Registry."""
+    """
+    Report whether the environment forbids touching the live Registry.
+
+    Used by CI and the CLI harness so process-level tests never query Uninstall
+    keys on the runner machine.
+
+    Returns:
+        bool: True when ``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN`` is a truthy
+        token (``1``, ``true``, ``yes``, ``on``).
+    """
     value = os.environ.get("SOFTWARE_INVENTORY_SKIP_LIVE_SCAN", "")
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _require_windows() -> None:
-    """Raise ``OSError`` when the host is not Windows."""
+    """
+    Guard live Registry access so non-Windows hosts fail with a clear error.
+
+    Raises:
+        OSError: When ``sys.platform`` is not ``win32``.
+    """
     if sys.platform != "win32":
         raise OSError(
             "Installed Software Inventory only runs on Windows. "
@@ -55,7 +93,15 @@ def _require_windows() -> None:
 
 
 def _load_winreg() -> Any:
-    """Import ``winreg`` or raise a clear error on non-Windows platforms."""
+    """
+    Import the stdlib ``winreg`` module after verifying the host is Windows.
+
+    Returns:
+        Any: The imported ``winreg`` module.
+
+    Raises:
+        OSError: When the platform is not Windows (via ``_require_windows``).
+    """
     _require_windows()
     import winreg  # noqa: PLC0415 — platform-gated import
 
@@ -63,7 +109,20 @@ def _load_winreg() -> Any:
 
 
 def _registry_sources(winreg: Any) -> list[tuple[Any, RegistrySource]]:
-    """Return (hive_constant, source) pairs covering 32/64-bit and HKCU views."""
+    """
+    Ordered Uninstall hives/views scanned on each live run.
+
+    Includes both the 32-bit Registry *view* of HKLM\\...\\Uninstall and the
+    ``WOW6432Node\\...\\Uninstall`` path. Those can overlap; prepare-time
+    dedupe is what collapses duplicates afterward.
+
+    Args:
+        winreg (Any): The ``winreg`` module (or test double).
+
+    Returns:
+        list[tuple[Any, RegistrySource]]: (hive constant, source metadata) pairs.
+        No elevation is required for the default readable set.
+    """
     sources: list[tuple[Any, RegistrySource]] = [
         (
             winreg.HKEY_LOCAL_MACHINE,
@@ -110,7 +169,17 @@ def _registry_sources(winreg: Any) -> list[tuple[Any, RegistrySource]]:
 
 
 def _access_mask(winreg: Any, access_name: str) -> int:
-    """Resolve a named Registry view access mask."""
+    """
+    Resolve a named Registry view access mask for KEY_READ.
+
+    Args:
+        winreg (Any): The ``winreg`` module (or test double).
+        access_name (str): ``KEY_WOW64_64KEY``, ``KEY_WOW64_32KEY``, or
+            ``DEFAULT`` for the process native view.
+
+    Returns:
+        int: Combined access flags for ``OpenKey``.
+    """
     base = winreg.KEY_READ
     if access_name == "KEY_WOW64_64KEY":
         return base | getattr(winreg, "KEY_WOW64_64KEY", 0)
@@ -120,7 +189,17 @@ def _access_mask(winreg: Any, access_name: str) -> int:
 
 
 def _read_value(key: Any, name: str, winreg: Any) -> object | None:
-    """Read a Registry value, returning ``None`` when missing or unreadable."""
+    """
+    Read one Registry value without failing the whole scan on missing data.
+
+    Args:
+        key (Any): Open Registry key handle.
+        name (str): Value name such as ``DisplayName``.
+        winreg (Any): The ``winreg`` module (or test double).
+
+    Returns:
+        object | None: Raw Registry value, or None when missing/unreadable.
+    """
     try:
         value, _ = winreg.QueryValueEx(key, name)
         return value
@@ -138,7 +217,21 @@ def _entry_from_values(
     scope: str,
     architecture: str,
 ) -> Optional[SoftwareEntry]:
-    """Build a ``SoftwareEntry`` from a flat value map."""
+    """
+    Map a flat Uninstall value dictionary into a ``SoftwareEntry``.
+
+    Entries without a usable ``DisplayName`` are dropped; incomplete optional
+    fields become None/False after normalization.
+
+    Args:
+        values (dict[str, object | None]): Raw Uninstall value map.
+        registry_path (str): Full source path for provenance and debug.
+        scope (str): ``machine`` or ``current_user``.
+        architecture (str): Architecture label for this Registry view.
+
+    Returns:
+        SoftwareEntry | None: Normalized entry, or None if DisplayName is empty.
+    """
     name = normalize_string(values.get("DisplayName"))
     if not name:
         return None
@@ -161,7 +254,16 @@ def _entry_from_values(
 
 
 def _read_subkey_values(key: Any, winreg: Any) -> dict[str, object | None]:
-    """Read the Uninstall value names we care about from an open key."""
+    """
+    Read the Uninstall value names used by the inventory model.
+
+    Args:
+        key (Any): Open application Uninstall subkey.
+        winreg (Any): The ``winreg`` module (or test double).
+
+    Returns:
+        dict[str, object | None]: Name → raw value (or None if absent).
+    """
     names = (
         "DisplayName",
         "DisplayVersion",
@@ -178,7 +280,16 @@ def _read_subkey_values(key: Any, winreg: Any) -> dict[str, object | None]:
 
 
 def _enumerate_subkeys(key: Any, winreg: Any) -> list[str]:
-    """List immediate subkey names under an open Registry key."""
+    """
+    List immediate child subkey names under an open Registry key.
+
+    Args:
+        key (Any): Open parent Registry key.
+        winreg (Any): The ``winreg`` module (or test double).
+
+    Returns:
+        list[str]: Subkey names in enumeration order.
+    """
     names: list[str] = []
     index = 0
     while True:
@@ -195,7 +306,20 @@ def collect_source(
     source: RegistrySource,
     winreg: Any,
 ) -> list[SoftwareEntry]:
-    """Collect software entries from a single Registry source."""
+    """
+    Collect software entries from a single Uninstall Registry source.
+
+    Unreadable keys are skipped quietly so a locked or partial hive does not
+    abort the rest of the scan.
+
+    Args:
+        hive (Any): Hive constant such as ``winreg.HKEY_LOCAL_MACHINE``.
+        source (RegistrySource): Path/scope/architecture/access metadata.
+        winreg (Any): The ``winreg`` module (or test double).
+
+    Returns:
+        list[SoftwareEntry]: Entries discovered under this source (may be empty).
+    """
     access = _access_mask(winreg, source.access_name)
     entries: list[SoftwareEntry] = []
 
@@ -248,7 +372,15 @@ def collect_source(
 
 
 def describe_collector_sources() -> list[str]:
-    """Return human-readable labels for Registry sources that may be scanned."""
+    """
+    List human-readable labels for Registry sources that may be scanned.
+
+    Embedded in v1.1 report ``scan.collector_sources`` so consumers can see
+    which hives contributed without re-running the collector.
+
+    Returns:
+        list[str]: Stable source labels in scan order.
+    """
     return [
         f"HKEY_LOCAL_MACHINE\\{UNINSTALL_SUBKEY} [64-bit view]",
         f"HKEY_LOCAL_MACHINE\\{UNINSTALL_SUBKEY} [32-bit view]",
@@ -258,12 +390,24 @@ def describe_collector_sources() -> list[str]:
 
 
 def collect_from_registry(*, winreg_module: Any | None = None) -> list[SoftwareEntry]:
-    """Scan supported Uninstall Registry locations and return raw entries.
+    """
+    Scan supported Uninstall locations and return **raw** entries.
 
-    Parameters
-    ----------
-    winreg_module:
-        Optional stand-in for the ``winreg`` module (used by tests).
+    Primary collector entry point for the CLI live-scan path. Does not filter
+    system components or updates — that policy lives in prepare so the same
+    raw list can be re-exported with different flags.
+
+    Args:
+        winreg_module (Any | None): Injected ``winreg`` stand-in for tests.
+            When omitted, imports the live stdlib module on Windows.
+
+    Returns:
+        list[SoftwareEntry]: Concatenation of all sources (duplicates possible).
+
+    Raises:
+        RuntimeError: Live scan disabled via ``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN``
+            and no ``winreg_module`` was injected (maps to CLI exit code 1).
+        OSError: Host is not Windows on the live import path (CLI exit code 3).
     """
     if winreg_module is None and live_scan_disabled():
         raise RuntimeError(

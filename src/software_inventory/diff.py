@@ -1,4 +1,23 @@
-"""Compare two inventory snapshots and report added/removed/changed software."""
+"""
+Snapshot comparison for fleet/personal inventory change tracking.
+
+Consumes two JSON inventories (legacy arrays or v1.1 envelopes) and classifies
+software as added, removed, changed, or unchanged for the CLI ``diff``
+subcommand and ``scripts/run_inventory.ps1``.
+
+    OLD.json + NEW.json
+        → SoftwareEntry lists
+        → index by identity (name + publisher + install location; **no version**)
+        → classify added / removed / changed / unchanged
+        → table or JSON via ``exporters.export_diff``
+
+Why version is excluded from identity: an upgrade should read as
+``1.2.3 → 1.3.0`` under Changed, not as uninstall+install noise.
+
+Contrast with prepare-time ``deduplication_key``, which *includes* version so
+a single scan can still list two co-installed versions as separate rows.
+"""
+
 
 from __future__ import annotations
 
@@ -24,11 +43,18 @@ DIFF_COMPARE_FIELDS: tuple[str, ...] = (
     "release_type",
     "system_component",
 )
+"""Fields compared after identity match. ``registry_path`` is omitted on purpose.
+
+``publisher`` / ``install_location`` usually only appear here when normalized
+identity still matches (e.g. case or trailing-slash differences). A true
+publisher rename or move to a new folder changes the identity key and shows up
+as removed+added instead of changed.
+"""
 
 
 @dataclass(frozen=True)
 class FieldChange:
-    """A single field that differs between two inventory snapshots."""
+    """One attribute delta between matched old/new snapshot rows."""
 
     field: str
     old: Any
@@ -37,7 +63,12 @@ class FieldChange:
 
 @dataclass(frozen=True)
 class ChangedEntry:
-    """An application present in both snapshots with one or more field changes."""
+    """
+    Same logical app in both snapshots, with at least one compared field differing.
+
+    ``old_version`` / ``new_version`` are duplicated at the top level so upgrade
+    summaries stay easy to scan without digging into ``changes``.
+    """
 
     identity: tuple[str, str, str]
     name: str
@@ -48,7 +79,12 @@ class ChangedEntry:
     new: SoftwareEntry
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+        """
+        Serialize for JSON diff output (summary tooling and archives).
+
+        Returns:
+            dict[str, Any]: Name, versions, field changes, and full old/new rows.
+        """
         return {
             "name": self.name,
             "old_version": self.old_version,
@@ -61,7 +97,11 @@ class ChangedEntry:
 
 @dataclass(frozen=True)
 class DiffSummary:
-    """Aggregate counts for a snapshot comparison."""
+    """
+    Headline counts for operators and automation (e.g. PowerShell runners).
+
+    ``unchanged`` is counted but not listed in detailed export sections.
+    """
 
     added: int
     removed: int
@@ -69,13 +109,18 @@ class DiffSummary:
     unchanged: int
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+        """
+        Serialize summary counts for JSON diff output.
+
+        Returns:
+            dict[str, Any]: added/removed/changed/unchanged integers.
+        """
         return asdict(self)
 
 
 @dataclass(frozen=True)
 class DiffResult:
-    """Full result of comparing two inventory snapshots."""
+    """Complete classification of two snapshots, ready for table/JSON export."""
 
     added: tuple[SoftwareEntry, ...]
     removed: tuple[SoftwareEntry, ...]
@@ -83,7 +128,13 @@ class DiffResult:
     summary: DiffSummary
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+        """
+        Serialize the full diff for ``--format json``.
+
+        Returns:
+            dict[str, Any]: Summary plus added/removed/changed arrays.
+            Unchanged rows are counted only, not enumerated.
+        """
         return {
             "summary": self.summary.to_dict(),
             "added": [entry.to_dict() for entry in self.added],
@@ -93,9 +144,24 @@ class DiffResult:
 
 
 def identity_key(entry: SoftwareEntry) -> tuple[str, str, str]:
-    """Build a stable identity from name, publisher, and install location.
+    """
+    Match the same logical app across two snapshots.
 
-    Version is intentionally excluded so upgrades appear as changes.
+    Version is excluded so upgrades are field changes. Publisher and install
+    location *are* included: renaming the vendor string or moving the install
+    folder looks like remove+add (different identity), not a soft change.
+
+    Args:
+        entry (SoftwareEntry): Inventory row to key.
+
+    Returns:
+        tuple[str, str, str]: Lowercased ``(name, publisher, install_location)``
+        with trailing path separators stripped from the location.
+
+    Notes:
+        Empty/missing ``install_location`` (common) collapses many apps onto
+        name+publisher only — collisions are resolved by completeness, then
+        ``registry_path``. Prefer populated InstallLocation when comparing fleets.
     """
     return (
         (entry.name or "").strip().lower(),
@@ -105,7 +171,16 @@ def identity_key(entry: SoftwareEntry) -> tuple[str, str, str]:
 
 
 def _prefer_entry(current: SoftwareEntry, candidate: SoftwareEntry) -> SoftwareEntry:
-    """Prefer the richer record when identities collide within one snapshot."""
+    """
+    Prefer the richer record when identities collide within one snapshot.
+
+    Args:
+        current (SoftwareEntry): Entry already indexed for an identity.
+        candidate (SoftwareEntry): Competing entry with the same identity.
+
+    Returns:
+        SoftwareEntry: Richer entry, with registry_path as tie-breaker.
+    """
     if candidate.completeness_score() > current.completeness_score():
         return candidate
     if candidate.completeness_score() < current.completeness_score():
@@ -118,7 +193,18 @@ def _prefer_entry(current: SoftwareEntry, candidate: SoftwareEntry) -> SoftwareE
 def index_by_identity(
     entries: Sequence[SoftwareEntry],
 ) -> dict[tuple[str, str, str], SoftwareEntry]:
-    """Index entries by identity, resolving collisions deterministically."""
+    """
+    Collapse one snapshot to a single preferred row per identity.
+
+    Args:
+        entries (Sequence[SoftwareEntry]): Rows from one JSON snapshot.
+
+    Returns:
+        dict[tuple[str, str, str], SoftwareEntry]: Identity → richest row
+        (``registry_path`` tie-break). Needed because a snapshot may still
+        contain near-duplicates if it was produced before prepare dedupe or
+        from mixed sources.
+    """
     indexed: dict[tuple[str, str, str], SoftwareEntry] = {}
     for entry in entries:
         key = identity_key(entry)
@@ -131,6 +217,16 @@ def index_by_identity(
 
 
 def _field_changes(old: SoftwareEntry, new: SoftwareEntry) -> list[FieldChange]:
+    """
+    List ``DIFF_COMPARE_FIELDS`` that differ between two matched entries.
+
+    Args:
+        old (SoftwareEntry): Prior snapshot row.
+        new (SoftwareEntry): Current snapshot row.
+
+    Returns:
+        list[FieldChange]: Ordered field deltas (may be empty).
+    """
     changes: list[FieldChange] = []
     for name in DIFF_COMPARE_FIELDS:
         old_value = getattr(old, name)
@@ -144,7 +240,24 @@ def compare_inventories(
     old_entries: Sequence[SoftwareEntry],
     new_entries: Sequence[SoftwareEntry],
 ) -> DiffResult:
-    """Compare two inventories and return added, removed, and changed entries."""
+    """
+    Classify software deltas between two snapshots for audit / fleet tracking.
+
+    Args:
+        old_entries (Sequence[SoftwareEntry]): Previous snapshot rows.
+        new_entries (Sequence[SoftwareEntry]): Current snapshot rows.
+
+    Returns:
+        DiffResult: Added/removed/changed lists plus summary counts.
+
+    Notes:
+        * Within each snapshot, colliding identities keep the richer row.
+        * Case-only publisher/location edits (same normalized identity) appear
+          under Changed; substantive renames/moves appear as Removed+Added.
+        * ``registry_path`` differences alone never mark a row Changed.
+        * Unchanged matches increment the summary only (not listed in detail).
+        * Output order is deterministic (sorted keys / names).
+    """
     old_index = index_by_identity(old_entries)
     new_index = index_by_identity(new_entries)
 
@@ -196,10 +309,21 @@ def compare_inventories(
 
 
 def load_inventory_file(path: Path) -> list[SoftwareEntry]:
-    """Load software entries from a JSON inventory file.
+    """
+    Load software entries from a JSON inventory file.
 
     Supports both legacy top-level arrays and v1.1 report envelopes.
     UTF-8 with or without BOM is accepted.
+
+    Args:
+        path (Path): Path to a snapshot JSON file.
+
+    Returns:
+        list[SoftwareEntry]: Software rows from the file.
+
+    Raises:
+        ValueError: When the file cannot be read, is invalid JSON, or has an
+            unsupported payload shape/schema (message includes the path).
     """
     try:
         text = path.read_text(encoding="utf-8-sig")
@@ -218,7 +342,16 @@ def load_inventory_file(path: Path) -> list[SoftwareEntry]:
 
 
 def format_diff_table(result: DiffResult) -> str:
-    """Render a human-readable diff summary table."""
+    """
+    Render a human-readable diff summary table.
+
+    Args:
+        result (DiffResult): Comparison output from ``compare_inventories``.
+
+    Returns:
+        str: Multi-line text with summary counts and Added/Removed/Changed
+        sections (or ``(no differences)``).
+    """
     lines: list[str] = [
         "Inventory Diff Summary",
         "======================",

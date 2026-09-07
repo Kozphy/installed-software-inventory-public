@@ -1,4 +1,10 @@
-"""Unit tests for inventory snapshot comparison."""
+"""
+Unit tests for inventory snapshot comparison.
+
+Covers identity keys (version excluded so upgrades are changes), compare
+classification, file loading of legacy/envelope JSON, and CLI ``diff`` exit
+codes — all fixture-driven with no live Registry access.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +24,15 @@ from software_inventory.models import SoftwareEntry
 
 
 def make_entry(**overrides) -> SoftwareEntry:
+    """
+    Build a ``SoftwareEntry`` fixture with sensible defaults for diff tests.
+
+    Args:
+        **overrides: Field overrides applied on top of the Shared App template.
+
+    Returns:
+        SoftwareEntry: Immutable test row.
+    """
     data = {
         "name": "Shared App",
         "version": "1.0.0",
@@ -38,6 +53,8 @@ def make_entry(**overrides) -> SoftwareEntry:
 
 
 class DiffIdentityTests(unittest.TestCase):
+    """Identity-key normalization used to match apps across snapshots."""
+
     def test_identity_excludes_version(self) -> None:
         a = make_entry(version="1.0")
         b = make_entry(version="2.0")
@@ -58,6 +75,8 @@ class DiffIdentityTests(unittest.TestCase):
 
 
 class DiffCompareTests(unittest.TestCase):
+    """Added/removed/changed classification and table formatting."""
+
     def test_added_removed_changed(self) -> None:
         old = [
             make_entry(name="Keep", version="1.0", registry_path="keep"),
@@ -122,6 +141,8 @@ class DiffCompareTests(unittest.TestCase):
 
 
 class DiffFileLoadingTests(unittest.TestCase):
+    """JSON snapshot loading for legacy arrays and v1.1 envelopes."""
+
     def test_load_legacy_and_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             legacy = Path(tmp) / "old.json"
@@ -177,6 +198,8 @@ class DiffFileLoadingTests(unittest.TestCase):
 
 
 class DiffCliTests(unittest.TestCase):
+    """CLI ``run_diff`` / ``main(['diff', ...])`` exit-code contract."""
+
     def test_run_diff_json_output_and_exit_codes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             old = Path(tmp) / "old.json"

@@ -1,8 +1,16 @@
-"""Process-level CLI harness for Installed Software Inventory.
+"""
+Process-level CLI harness for Installed Software Inventory.
 
-Drives ``python -m software_inventory`` as a real subprocess with fixture
-JSON instead of the live Windows Registry. Captures exit codes, stdout,
-stderr, and optional transcripts. Never writes Registry values.
+Drives ``python -m software_inventory`` as a real subprocess against fixture
+JSON snapshots instead of the live Windows Registry. Validates the public CLI
+contract (exit codes, UTF-8 output, formats, ``diff``, live-scan guard) used
+by CI and local developers.
+
+Pipeline role (test/QA, not production scan):
+    fixture JSON → subprocess CLI → capture exit/stdout/stderr → assert contract
+
+Safety: always sets ``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN=1`` and never writes
+Registry values.
 """
 
 from __future__ import annotations
@@ -28,7 +36,13 @@ PROCESS_TIMEOUT_SECONDS = 30
 
 @dataclass(frozen=True)
 class CommandResult:
-    """Captured subprocess result for one harness case."""
+    """
+    Captured subprocess result for one harness case.
+
+    Responsibilities:
+        * Hold argv, exit code, streams, timing, and timeout flag for asserts
+          and optional transcript files.
+    """
 
     argv: tuple[str, ...]
     returncode: int
@@ -40,7 +54,13 @@ class CommandResult:
 
 @dataclass
 class Case:
-    """One CLI invocation and the checks that must pass."""
+    """
+    One CLI invocation and the checks that must pass.
+
+    Responsibilities:
+        * Describe argv, expected exit code, substring expectations, and an
+          optional structured ``check`` callback over the result/workdir.
+    """
 
     name: str
     args: Sequence[str]
@@ -53,12 +73,26 @@ class Case:
 
 
 def project_python() -> str:
-    """Return the interpreter that should run the package under test."""
+    """
+    Return the interpreter that should run the package under test.
+
+    Returns:
+        str: Path to the current ``sys.executable``.
+    """
     return sys.executable
 
 
 def harness_env(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
-    """Build a deterministic environment that never live-scans the Registry."""
+    """
+    Build a deterministic environment that never live-scans the Registry.
+
+    Args:
+        extra (dict[str, str] | None): Optional overrides merged last.
+
+    Returns:
+        dict[str, str]: Env mapping with ``PYTHONPATH``, UTF-8 flags, and
+        ``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN=1``.
+    """
     env = os.environ.copy()
     env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
     env["PYTHONUTF8"] = "1"
@@ -75,7 +109,18 @@ def run_cli(
     extra_env: Optional[dict[str, str]] = None,
     timeout: int = PROCESS_TIMEOUT_SECONDS,
 ) -> CommandResult:
-    """Run ``python -m software_inventory`` and capture output."""
+    """
+    Run ``python -m software_inventory`` as a subprocess and capture output.
+
+    Args:
+        args (Sequence[str]): CLI arguments after the module name.
+        extra_env (dict[str, str] | None): Optional env overrides.
+        timeout (int): Seconds before the process is treated as hung.
+
+    Returns:
+        CommandResult: Captured exit code, streams, and timing. Timeouts use
+        returncode ``124`` and ``timed_out=True``.
+    """
     argv = (project_python(), "-m", "software_inventory", *args)
     started = time.perf_counter()
     try:
@@ -117,10 +162,29 @@ def run_cli(
 
 
 def _json_payload(path: Path) -> object:
+    """
+    Load a UTF-8 JSON file for structured harness assertions.
+
+    Args:
+        path (Path): File to parse.
+
+    Returns:
+        object: Parsed JSON payload.
+    """
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _check_envelope(result: CommandResult, workdir: Path) -> Optional[str]:
+    """
+    Assert the v1.1 JSON envelope written by a harness case is well-formed.
+
+    Args:
+        result (CommandResult): Unused process result (signature for Case.check).
+        workdir (Path): Temp directory containing ``scan.json``.
+
+    Returns:
+        str | None: Failure message, or None when the envelope looks valid.
+    """
     path = workdir / "scan.json"
     if not path.is_file():
         return f"missing output file {path}"
@@ -144,6 +208,16 @@ def _check_envelope(result: CommandResult, workdir: Path) -> Optional[str]:
 
 
 def _check_legacy_array(result: CommandResult, workdir: Path) -> Optional[str]:
+    """
+    Assert ``--legacy-json`` wrote a top-level array with expected content.
+
+    Args:
+        result (CommandResult): Unused process result (signature for Case.check).
+        workdir (Path): Temp directory containing ``legacy-out.json``.
+
+    Returns:
+        str | None: Failure message, or None when the array looks valid.
+    """
     path = workdir / "legacy-out.json"
     if not path.is_file():
         return f"missing output file {path}"
@@ -156,6 +230,16 @@ def _check_legacy_array(result: CommandResult, workdir: Path) -> Optional[str]:
 
 
 def _check_csv(result: CommandResult, workdir: Path) -> Optional[str]:
+    """
+    Assert CSV export has the expected header and UTF-8 display names.
+
+    Args:
+        result (CommandResult): Unused process result (signature for Case.check).
+        workdir (Path): Temp directory containing ``scan.csv``.
+
+    Returns:
+        str | None: Failure message, or None when CSV looks valid.
+    """
     path = workdir / "scan.csv"
     if not path.is_file():
         return f"missing output file {path}"
@@ -169,6 +253,16 @@ def _check_csv(result: CommandResult, workdir: Path) -> Optional[str]:
 
 
 def _check_diff_json(result: CommandResult, workdir: Path) -> Optional[str]:
+    """
+    Assert fixture old/new snapshots produce the expected diff summary counts.
+
+    Args:
+        result (CommandResult): Unused process result (signature for Case.check).
+        workdir (Path): Temp directory containing ``diff.json``.
+
+    Returns:
+        str | None: Failure message, or None when summary matches fixtures.
+    """
     path = workdir / "diff.json"
     if not path.is_file():
         return f"missing output file {path}"
@@ -186,18 +280,39 @@ def _check_diff_json(result: CommandResult, workdir: Path) -> Optional[str]:
 
 
 def expected_blocked_live_scan_code() -> int:
-    """Live scan without --from-json is unsupported off Windows, skipped on Windows."""
+    """
+    Expected exit code when a live scan is attempted under the skip flag.
+
+    Returns:
+        int: ``3`` off Windows (unsupported platform), ``1`` on Windows when
+        the collector refuses the live hive.
+    """
     return 3 if sys.platform != "win32" else 1
 
 
 def expected_blocked_live_scan_stderr() -> tuple[str, ...]:
+    """
+    Expected stderr needles for a blocked live scan.
+
+    Returns:
+        tuple[str, ...]: Substrings that must appear on stderr.
+    """
     if sys.platform != "win32":
         return ("only runs on Windows",)
     return ("live Registry scan is disabled",)
 
 
 def build_cases(workdir: Path) -> list[Case]:
-    """Return the default CLI contract cases."""
+    """
+    Build the default CLI contract cases against fixture snapshots.
+
+    Args:
+        workdir (Path): Temp directory for per-case output files.
+
+    Returns:
+        list[Case]: Ordered harness cases covering help, formats, diff, and
+        live-scan blocking.
+    """
     return [
         Case(
             name="help",
@@ -337,7 +452,17 @@ def build_cases(workdir: Path) -> list[Case]:
 
 
 def evaluate_case(case: Case, workdir: Path) -> tuple[list[str], CommandResult]:
-    """Run one case and return failure messages plus the captured result."""
+    """
+    Run one case and return failure messages plus the captured result.
+
+    Args:
+        case (Case): Case definition to execute.
+        workdir (Path): Temp directory for output-file checks.
+
+    Returns:
+        tuple[list[str], CommandResult]: Failure strings (empty on pass) and
+        the subprocess capture.
+    """
     result = run_cli(case.args, extra_env=case.extra_env)
     failures: list[str] = []
     if result.timed_out:
@@ -363,7 +488,14 @@ def evaluate_case(case: Case, workdir: Path) -> tuple[list[str], CommandResult]:
 
 
 def write_transcript(directory: Path, case: Case, result: CommandResult) -> None:
-    """Write stdout/stderr/meta for one case when transcripts are requested."""
+    """
+    Write stdout/stderr/meta for one case when transcripts are requested.
+
+    Args:
+        directory (Path): Destination directory for transcript files.
+        case (Case): Case whose ``name`` becomes the file prefix.
+        result (CommandResult): Captured subprocess output.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     (directory / f"{case.name}.stdout.txt").write_text(result.stdout, encoding="utf-8")
     (directory / f"{case.name}.stderr.txt").write_text(result.stderr, encoding="utf-8")
@@ -381,7 +513,15 @@ def write_transcript(directory: Path, case: Case, result: CommandResult) -> None
 
 
 def run_harness(transcript_dir: Optional[Path] = None) -> int:
-    """Execute all cases. Return 0 when every case passes."""
+    """
+    Execute all harness cases and print a PASS/FAIL summary.
+
+    Args:
+        transcript_dir (Path | None): When set, write per-case transcripts here.
+
+    Returns:
+        int: ``0`` when every case passes, ``1`` on fixture or assertion failure.
+    """
     if not OLD_JSON.is_file() or not NEW_JSON.is_file() or not LEGACY_JSON.is_file():
         print(
             f"error: harness fixtures missing under {FIXTURE_DIR}",
@@ -417,6 +557,12 @@ def run_harness(transcript_dir: Optional[Path] = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """
+    Create the argument parser for the harness script itself.
+
+    Returns:
+        argparse.ArgumentParser: Parser with optional ``--keep-transcripts``.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Drive software_inventory as a subprocess using fixture snapshots. "
@@ -434,6 +580,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """
+    Parse harness CLI arguments and run the full case suite.
+
+    Args:
+        argv (Sequence[str] | None): Argument vector; defaults to ``sys.argv[1:]``.
+
+    Returns:
+        int: Exit code from ``run_harness``.
+    """
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     return run_harness(transcript_dir=args.keep_transcripts)

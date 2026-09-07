@@ -1,4 +1,9 @@
-"""Unit tests for versioned report envelopes and payload loading."""
+"""
+Unit tests for versioned report envelopes and payload loading.
+
+Covers v1.1 scan metadata assembly, default/legacy JSON export shapes, CLI
+``--from-json`` replay, and tolerant deserialization of partial entries.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +27,15 @@ from software_inventory.report import (
 
 
 def make_entry(**overrides) -> SoftwareEntry:
+    """
+    Build a ``SoftwareEntry`` fixture for report/envelope tests.
+
+    Args:
+        **overrides: Field overrides applied on top of the Sample App template.
+
+    Returns:
+        SoftwareEntry: Immutable test row.
+    """
     data = {
         "name": "Sample App",
         "version": "1.0.0",
@@ -42,6 +56,8 @@ def make_entry(**overrides) -> SoftwareEntry:
 
 
 class ReportEnvelopeTests(unittest.TestCase):
+    """v1.1 envelope assembly, export defaults, and ``--from-json`` CLI."""
+
     def test_build_report_schema_and_counts(self) -> None:
         entries = [
             make_entry(name="App A"),
@@ -184,6 +200,8 @@ class ReportEnvelopeTests(unittest.TestCase):
 
 
 class PayloadLoadingTests(unittest.TestCase):
+    """Deserialization of legacy arrays and versioned report objects."""
+
     def test_load_legacy_array(self) -> None:
         entries = load_entries_from_payload([make_entry().to_dict()])
         self.assertEqual(len(entries), 1)

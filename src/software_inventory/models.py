@@ -1,4 +1,15 @@
-"""Data models for installed software inventory records."""
+"""
+Canonical data model for one installed application discovered on a Windows PC.
+
+``SoftwareEntry`` is the shared currency of the inventory tool: collectors emit
+it, prepare/dedupe refine it, exporters serialize it, and ``diff`` compares
+snapshots of it. Field names intentionally mirror Uninstall Registry values so
+auditors can trace a row back to its hive key via ``registry_path``.
+
+This is not a complete software census of the machine — only programs that
+registered an Uninstall key (see the Registry collector module for coverage
+gaps such as Store/portable apps).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +19,34 @@ from typing import Any, Optional
 
 @dataclass(frozen=True)
 class SoftwareEntry:
-    """A single installed application discovered from the Windows Registry."""
+    """
+    Immutable inventory row for one Uninstall-registered application.
+
+    Built for personal audits and fleet snapshot diffs: it carries enough
+    provenance to explain *where* a row came from, while staying safe to
+    serialize (uninstall strings are reported, never executed).
+
+    Attributes:
+        name: Display name from ``DisplayName``. Blank names are dropped before
+            export; JSON reload also rejects missing/blank names.
+        version: Display version string (not semver-normalized).
+        publisher: Vendor string when present.
+        install_date: Normalized ``YYYY-MM-DD``, or None if missing/invalid.
+        install_location: Install folder when present; empty/missing locations
+            weaken ``diff`` identity (many apps share blank location).
+        estimated_size_kb: Registry ``EstimatedSize`` in KB. Often approximate
+            or absent; never converted to bytes so consumers keep Registry units.
+        scope: Usually ``machine`` (HKLM) or ``current_user`` (HKCU). May be
+            ``unknown`` when rehydrated from incomplete JSON.
+        architecture: ``64-bit``, ``32-bit``, or ``unknown`` (HKCU / incomplete
+            JSON). Labels the Registry *view*, not the binary's PE machine type.
+        uninstall_string: Uninstall command text for documentation only.
+        quiet_uninstall_string: Quiet uninstall command when publishers provide one.
+        registry_path: Full Uninstall subkey path used as the source of truth.
+        release_type: Registry ``ReleaseType``; feeds update/hotfix heuristics.
+        system_component: True when Registry ``SystemComponent`` is set; hidden
+            from default exports to reduce OS plumbing noise.
+    """
 
     name: str
     version: Optional[str]
@@ -25,11 +63,30 @@ class SoftwareEntry:
     system_component: bool
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable dictionary representation."""
+        """
+        Flatten this entry for JSON/CSV and for ``diff`` serialization.
+
+        Returns:
+            dict[str, Any]: One key per dataclass field, JSON-friendly values.
+        """
         return asdict(self)
 
     def completeness_score(self) -> int:
-        """Count non-empty optional metadata fields for deduplication ranking."""
+        """
+        Rank metadata richness so overlapping Registry views keep the better row.
+
+        Used by both prepare-time deduplication and within-snapshot ``diff``
+        identity collisions. A 64-bit view row with publisher/size should beat a
+        sparse duplicate from a parallel 32-bit view.
+
+        Returns:
+            int: Count of optional fields that are present and non-blank.
+
+        Notes:
+            ``name``, ``registry_path``, ``scope``, ``architecture``, and
+            ``system_component`` are excluded so provenance alone cannot inflate
+            the score. Ties fall back to lexicographic ``registry_path``.
+        """
         score = 0
         for field in fields(self):
             if field.name in {"name", "registry_path", "scope", "architecture", "system_component"}:
@@ -58,3 +115,4 @@ CSV_FIELDNAMES: tuple[str, ...] = (
     "release_type",
     "system_component",
 )
+"""Public CSV column contract; order is stable across releases and must match SoftwareEntry."""

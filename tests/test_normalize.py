@@ -1,4 +1,10 @@
-"""Unit tests for normalization, filtering, and search helpers."""
+"""
+Unit tests for normalization, filtering, and search helpers.
+
+Exercises the prepare stage of the inventory pipeline (string/date/size
+coercion, update detection, and ``--search`` matching) without touching the
+live Registry.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +25,15 @@ from software_inventory.normalize import (
 
 
 def make_entry(**overrides) -> SoftwareEntry:
-    """Build a SoftwareEntry with sensible defaults for tests."""
+    """
+    Build a ``SoftwareEntry`` with sensible defaults for normalize tests.
+
+    Args:
+        **overrides: Field overrides applied on top of the Example App template.
+
+    Returns:
+        SoftwareEntry: Immutable test row.
+    """
     data = {
         "name": "Example App",
         "version": "1.0.0",
@@ -40,6 +54,8 @@ def make_entry(**overrides) -> SoftwareEntry:
 
 
 class NormalizeStringTests(unittest.TestCase):
+    """Registry string coercion at the collector→model boundary."""
+
     def test_missing_and_blank(self) -> None:
         self.assertIsNone(normalize_string(None))
         self.assertIsNone(normalize_string(""))
@@ -50,6 +66,8 @@ class NormalizeStringTests(unittest.TestCase):
 
 
 class InstallDateTests(unittest.TestCase):
+    """InstallDate normalization into ISO ``YYYY-MM-DD``."""
+
     def test_yyyymmdd(self) -> None:
         self.assertEqual(normalize_install_date("20260717"), "2026-07-17")
 
@@ -66,6 +84,8 @@ class InstallDateTests(unittest.TestCase):
 
 
 class SizeTests(unittest.TestCase):
+    """EstimatedSize parsing and human-readable table formatting."""
+
     def test_parse_estimated_size(self) -> None:
         self.assertEqual(normalize_estimated_size_kb(850), 850)
         self.assertEqual(normalize_estimated_size_kb("1024"), 1024)
@@ -82,6 +102,8 @@ class SizeTests(unittest.TestCase):
 
 
 class SystemComponentTests(unittest.TestCase):
+    """SystemComponent DWORD/string interpretation."""
+
     def test_system_component_flags(self) -> None:
         self.assertFalse(normalize_system_component(None))
         self.assertFalse(normalize_system_component(0))
@@ -90,6 +112,8 @@ class SystemComponentTests(unittest.TestCase):
 
 
 class FilterTests(unittest.TestCase):
+    """Default filters, update detection, search, and prepare_inventory."""
+
     def test_filters_missing_display_name(self) -> None:
         entries = [
             make_entry(name=""),

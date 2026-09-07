@@ -1,4 +1,14 @@
-"""Collectors that gather installed-software records from the local system."""
+"""
+Collectors package: entry point for local software discovery.
+
+Re-exports the Windows Uninstall Registry collector so the CLI and other
+callers can import from ``software_inventory.collectors`` without knowing
+which OS-specific backend is active.
+
+Pipeline role:
+    Input  → live Registry hives (or injected test doubles)
+    Output → raw ``SoftwareEntry`` lists for ``normalize`` / ``report``
+"""
 
 from __future__ import annotations
 
