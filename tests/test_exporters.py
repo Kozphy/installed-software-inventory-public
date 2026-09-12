@@ -55,6 +55,7 @@ class ExporterTests(unittest.TestCase):
     """JSON/CSV/table export shapes and UTF-8 file I/O."""
 
     def setUp(self) -> None:
+        """Build a small two-entry inventory fixture for exporter assertions."""
         self.entries = [
             make_entry(),
             make_entry(
