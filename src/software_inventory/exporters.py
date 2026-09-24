@@ -1,11 +1,11 @@
 """
-Export prepared inventory (and diffs) as table, JSON, or CSV.
+Export prepared inventory (and diffs) as table, JSON, CSV, or winget import.
 
 Last pipeline stage — no Registry access:
 
-    prepared SoftwareEntry / DiffResult
+    prepared SoftwareEntry / DiffResult / WingetBridgeResult
         → UTF-8 file (parents created) or console
-        → table | JSON envelope/array | CSV | diff table/JSON
+        → table | JSON envelope/array | CSV | diff | winget import JSON
 
 File outputs are always UTF-8. Console writes go through ``_safe_write`` so
 non-ASCII display names degrade safely on legacy Windows code pages.
@@ -26,7 +26,11 @@ from software_inventory.diff import DiffResult, format_diff_table
 from software_inventory.models import CSV_FIELDNAMES, SoftwareEntry
 from software_inventory.normalize import format_size_human
 from software_inventory.report import InventoryReport
-
+from software_inventory.winget_bridge import (
+    WingetBridgeResult,
+    build_winget_import_document,
+    format_unmatched_markdown,
+)
 TABLE_COLUMNS: tuple[tuple[str, str, int], ...] = (
     ("Name", "name", 36),
     ("Version", "version", 14),
@@ -320,3 +324,38 @@ def export_diff(
         _write_text(format_diff_table(result), output, stream)
         return
     raise ValueError(f"unsupported diff format: {format_name!r}")
+
+
+def export_winget(
+    result: WingetBridgeResult,
+    output: Optional[Path] = None,
+    *,
+    pretty: bool = True,
+    include_versions: bool = False,
+    unmatched_output: Optional[Path] = None,
+    stream: Optional[TextIO] = None,
+) -> None:
+    """
+    Write a ``winget import`` JSON document and optional unmatched checklist.
+
+    Args:
+        result (WingetBridgeResult): Match outcome from ``winget_bridge``.
+        output (Path | None): Import JSON path; stdout when omitted.
+        pretty (bool): Indent JSON (default True — import files are edited).
+        include_versions (bool): Pin package versions in the import document.
+        unmatched_output (Path | None): Markdown checklist path. When None,
+            no checklist file is written (callers may still print a summary).
+        stream (TextIO | None): Stream override for the JSON document.
+    """
+    document = build_winget_import_document(
+        result,
+        include_versions=include_versions,
+    )
+    _write_text(dumps_json(document, pretty=pretty), output, stream)
+    if unmatched_output is not None:
+        checklist = format_unmatched_markdown(
+            result.unmatched,
+            matched_count=result.matched_count,
+        )
+        ensure_parent_directory(unmatched_output)
+        unmatched_output.write_text(checklist, encoding="utf-8")

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Kozphy/installed-software-inventory/actions/workflows/ci.yml/badge.svg)](https://github.com/Kozphy/installed-software-inventory/actions/workflows/ci.yml)
 
-Safe, local-first command-line tool that scans a Windows computer for installed software and exports the results to **table**, **JSON**, or **CSV** formats. Version **1.1** adds a versioned JSON report envelope, snapshot comparison (`diff`), and Windows CI.
+Safe, local-first command-line tool that scans a Windows computer for installed software and exports the results to **table**, **JSON**, **CSV**, or **winget import** formats. Version **1.2** adds a winget reinstall bridge (matched package IDs + unmatched checklist) on top of the v1.1 snapshot/diff workflow.
 
 ## Purpose
 
@@ -50,6 +50,8 @@ python -m software_inventory --format json
 python -m software_inventory --format json --pretty --output reports/software.json
 python -m software_inventory --format json --legacy-json --output reports/legacy.json
 python -m software_inventory --format csv --output reports/software.csv
+python -m software_inventory --format winget --output reports/winget-packages.json
+python -m software_inventory --format winget --include-versions --output reports/winget-packages.json
 python -m software_inventory --search microsoft
 python -m software_inventory --include-system-components
 python -m software_inventory --include-updates
@@ -70,7 +72,7 @@ python -m software_inventory diff reports/old.json reports/new.json --format jso
 
 | Argument | Description |
 |----------|-------------|
-| `--format table\|json\|csv` | Output format (default: `table`) |
+| `--format table\|json\|csv\|winget` | Output format (default: `table`) |
 | `--output PATH` | Write to a file instead of stdout (creates parent dirs) |
 | `--search TEXT` | Case-insensitive match on name, publisher, or version |
 | `--include-system-components` | Show entries marked `SystemComponent` |
@@ -78,6 +80,9 @@ python -m software_inventory diff reports/old.json reports/new.json --format jso
 | `--pretty` | Indent JSON output |
 | `--legacy-json` | Emit a top-level JSON array (v1.0 shape) instead of the v1.1 envelope |
 | `--from-json PATH` | Replay a JSON snapshot instead of scanning the Registry |
+| `--winget-list PATH` | Offline winget package fixture (skips live `winget list`) |
+| `--include-versions` | Pin versions in `--format winget` import JSON |
+| `--unmatched-output PATH` | Markdown checklist for apps with no winget Id |
 | `--verbose` | Detailed diagnostics on stderr |
 | `--version` | Print package version |
 
@@ -165,6 +170,37 @@ Consumers that expect a **top-level array** should either:
 
 Both shapes are accepted as input to `diff`.
 
+## Winget reinstall bridge
+
+`--format winget` keeps this tool as the safe Uninstall census and adds a
+reinstall companion:
+
+1. Load inventory (live Registry or `--from-json`).
+2. Load winget packages (`winget list`, or `--winget-list` fixture offline).
+3. Match display names to importable `PackageIdentifier` values (Source
+   `winget` / `msstore`; ARP\\ and MSIX\\ synthetic IDs are skipped).
+4. Write packages.schema.2.0 JSON for `winget import`.
+5. Write a Markdown checklist of unmatched apps for manual reinstall.
+
+```powershell
+# Live machine: scan + winget list
+python -m software_inventory --format winget --output reports/winget-packages.json
+# → reports/winget-packages.json
+# → reports/winget-packages.unmatched.md
+
+# After OS wipe, restore catalog apps:
+winget import -i reports\winget-packages.json
+
+# Offline / CI (fixture winget list + snapshot)
+python -m software_inventory `
+  --from-json reports/latest.json `
+  --format winget `
+  --winget-list tests/fixtures/cli/winget-list.json `
+  --output reports/winget-packages.json
+```
+
+The bridge never runs `winget import` itself and never uninstalls software.
+
 ## Snapshot workflow
 
 Recommended automation loop:
@@ -185,6 +221,8 @@ It writes:
 ```text
 reports/installed-software-YYYY-MM-DD-HHMMSS.json
 reports/installed-software-YYYY-MM-DD-HHMMSS.csv
+reports/winget-packages-YYYY-MM-DD-HHMMSS.json
+reports/winget-packages-YYYY-MM-DD-HHMMSS.unmatched.md
 reports/latest.json
 reports/previous.json                 # copy of prior latest, when present
 reports/installed-software-diff-YYYY-MM-DD-HHMMSS.json
@@ -266,6 +304,7 @@ Traditional Uninstall keys do **not** capture every program on a PC:
 | `Python was not found` | Install Python 3.10+ and ensure `python` is on `PATH`. |
 | `unsupported schema_version` | Use a v1.1 envelope or a legacy array; upgrade the tool if needed. |
 | Empty or sparse results | Try `--include-system-components` / `--include-updates`. |
+| `winget was not found` | Install App Installer, or pass `--winget-list` with a fixture. |
 | Garbled console text | Prefer `--output` files (UTF-8); some consoles use legacy code pages. |
 | Module not found | Install with `pip install -e .` or set `PYTHONPATH` to `src`. |
 
@@ -299,6 +338,7 @@ installed-software-inventory/
 │       ├── exporters.py
 │       ├── report.py
 │       ├── diff.py
+│       ├── winget_bridge.py
 │       └── collectors/
 │           ├── __init__.py
 │           └── windows_registry.py

@@ -4,7 +4,7 @@ Command-line interface — the product surface for humans and automation.
 Wires the inventory pipeline and the snapshot ``diff`` subcommand:
 
     Scan:
-        flags → Registry | ``--from-json`` → prepare → report → table/json/csv
+        flags → Registry | ``--from-json`` → prepare → report → table/json/csv/winget
     Diff:
         OLD.json + NEW.json → compare → table/json
 
@@ -13,6 +13,7 @@ Public exit-code contract (do not change lightly):
     2 usage (argparse) · 3 unsupported platform for live scans.
 
 Read-only by design: never modifies the Registry or uninstalls software.
+``--format winget`` only runs ``winget list`` (read) and never imports.
 """
 
 
@@ -30,9 +31,21 @@ from typing import Optional, Sequence
 from software_inventory import __version__
 from software_inventory.collectors import collect_from_registry, describe_collector_sources
 from software_inventory.diff import compare_inventories, load_inventory_file
-from software_inventory.exporters import export_csv, export_diff, export_json, export_table
+from software_inventory.exporters import (
+    export_csv,
+    export_diff,
+    export_json,
+    export_table,
+    export_winget,
+)
 from software_inventory.normalize import prepare_inventory_with_stats
 from software_inventory.report import build_report, build_scan_metadata
+from software_inventory.winget_bridge import (
+    default_unmatched_path,
+    load_winget_packages_json,
+    match_inventory_to_winget,
+    run_winget_list,
+)
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -89,9 +102,12 @@ def build_scan_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=("table", "json", "csv"),
+        choices=("table", "json", "csv", "winget"),
         default="table",
-        help="Output format (default: table).",
+        help=(
+            "Output format (default: table). "
+            "'winget' emits a packages.schema.2.0 import JSON plus unmatched checklist."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -134,6 +150,31 @@ def build_scan_parser() -> argparse.ArgumentParser:
         help=(
             "Load a JSON snapshot instead of scanning the Registry "
             "(legacy array or v1.1 envelope). Works on any platform."
+        ),
+    )
+    parser.add_argument(
+        "--winget-list",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "JSON fixture of winget packages (name/id/version/source) used instead "
+            "of running 'winget list'. Required for offline --format winget in CI."
+        ),
+    )
+    parser.add_argument(
+        "--include-versions",
+        action="store_true",
+        help="When --format winget, pin Version on each PackageIdentifier.",
+    )
+    parser.add_argument(
+        "--unmatched-output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Markdown checklist of inventory apps with no winget Id "
+            "(default: <output-stem>.unmatched.md when --output is set)."
         ),
     )
     parser.add_argument(
@@ -230,6 +271,9 @@ def run_inventory(
     include_updates: bool = False,
     pretty: bool = False,
     legacy_json: bool = False,
+    include_versions: bool = False,
+    winget_list: Optional[Path] = None,
+    unmatched_output: Optional[Path] = None,
     entries=None,
     hostname: Optional[str] = None,
     platform_name: Optional[str] = None,
@@ -243,13 +287,17 @@ def run_inventory(
     (export I/O is outside ``duration_ms``).
 
     Args:
-        format_name (str): ``table``, ``json``, or ``csv``.
+        format_name (str): ``table``, ``json``, ``csv``, or ``winget``.
         output (Path | None): Optional output file path.
         search (str | None): Optional case-insensitive search needle.
         include_system_components (bool): Keep SystemComponent rows when True.
         include_updates (bool): Keep update/hotfix rows when True.
         pretty (bool): Pretty-print JSON when True.
         legacy_json (bool): Emit top-level JSON array when True.
+        include_versions (bool): Pin versions in winget import JSON when True.
+        winget_list (Path | None): Offline winget package fixture for
+            ``--format winget``; when None, runs live ``winget list``.
+        unmatched_output (Path | None): Checklist path for unmatched apps.
         entries: Preloaded ``SoftwareEntry`` iterable; when None, calls
             ``collect_from_registry()``.
         hostname (str | None): Override for scan metadata hostname.
@@ -310,6 +358,15 @@ def run_inventory(
             )
         elif format_name == "csv":
             export_csv(prepared, output=output)
+        elif format_name == "winget":
+            return _export_winget_bridge(
+                prepared,
+                output=output,
+                pretty=True,
+                include_versions=include_versions,
+                winget_list=winget_list,
+                unmatched_output=unmatched_output,
+            )
         else:  # pragma: no cover - argparse restricts choices
             print(f"error: unsupported format {format_name!r}", file=sys.stderr)
             return EXIT_USAGE
@@ -317,6 +374,63 @@ def run_inventory(
         print(f"error: failed to write output: {exc}", file=sys.stderr)
         return EXIT_RUNTIME
 
+    return EXIT_OK
+
+
+def _export_winget_bridge(
+    prepared,
+    *,
+    output: Optional[Path],
+    pretty: bool,
+    include_versions: bool,
+    winget_list: Optional[Path],
+    unmatched_output: Optional[Path],
+) -> int:
+    """
+    Load winget packages, match inventory, and write import JSON + checklist.
+
+    Returns:
+        int: ``EXIT_OK`` or ``EXIT_RUNTIME`` on winget/I/O failures.
+    """
+    try:
+        if winget_list is not None:
+            packages = load_winget_packages_json(winget_list)
+        else:
+            packages = run_winget_list()
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    except Exception as exc:  # pragma: no cover - unexpected winget failures
+        logging.getLogger(__name__).exception("winget list failed")
+        print(f"error: winget list failed: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    result = match_inventory_to_winget(prepared, packages)
+    checklist_path = unmatched_output
+    if checklist_path is None and output is not None:
+        checklist_path = default_unmatched_path(output)
+
+    try:
+        export_winget(
+            result,
+            output=output,
+            pretty=pretty,
+            include_versions=include_versions,
+            unmatched_output=checklist_path,
+        )
+    except OSError as exc:
+        print(f"error: failed to write output: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    print(
+        f"winget bridge: matched {result.matched_count}, "
+        f"unmatched {result.unmatched_count}"
+        + (f", checklist {checklist_path}" if checklist_path is not None else ""),
+        file=sys.stderr,
+    )
     return EXIT_OK
 
 
@@ -417,6 +531,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             include_updates=args.include_updates,
             pretty=args.pretty,
             legacy_json=args.legacy_json,
+            include_versions=args.include_versions,
+            winget_list=args.winget_list,
+            unmatched_output=args.unmatched_output,
             entries=entries,
             collector_sources=[f"json-snapshot:{args.from_json}"],
         )
@@ -437,6 +554,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         include_updates=args.include_updates,
         pretty=args.pretty,
         legacy_json=args.legacy_json,
+        include_versions=args.include_versions,
+        winget_list=args.winget_list,
+        unmatched_output=args.unmatched_output,
     )
 
 

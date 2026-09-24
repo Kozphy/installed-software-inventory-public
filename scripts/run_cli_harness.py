@@ -31,6 +31,7 @@ FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "cli"
 OLD_JSON = FIXTURE_DIR / "old.json"
 NEW_JSON = FIXTURE_DIR / "new.json"
 LEGACY_JSON = FIXTURE_DIR / "legacy.json"
+WINGET_LIST_JSON = FIXTURE_DIR / "winget-list.json"
 PROCESS_TIMEOUT_SECONDS = 30
 
 
@@ -279,6 +280,47 @@ def _check_diff_json(result: CommandResult, workdir: Path) -> Optional[str]:
     return None
 
 
+def _check_winget_bridge(result: CommandResult, workdir: Path) -> Optional[str]:
+    """
+    Assert ``--format winget`` wrote import JSON and an unmatched checklist.
+
+    Args:
+        result (CommandResult): Unused process result (signature for Case.check).
+        workdir (Path): Temp directory containing winget outputs.
+
+    Returns:
+        str | None: Failure message, or None when outputs look correct.
+    """
+    path = workdir / "winget-packages.json"
+    checklist = workdir / "winget-packages.unmatched.md"
+    if not path.is_file():
+        return f"missing output file {path}"
+    if not checklist.is_file():
+        return f"missing unmatched checklist {checklist}"
+    payload = _json_payload(path)
+    if not isinstance(payload, dict):
+        return "expected winget import JSON object"
+    if payload.get("$schema") != "https://aka.ms/winget-packages.schema.2.0.json":
+        return "winget import missing packages.schema.2.0 $schema"
+    sources = payload.get("Sources")
+    if not isinstance(sources, list) or not sources:
+        return "winget import missing Sources"
+    packages = sources[0].get("Packages")
+    if not isinstance(packages, list):
+        return "winget import missing Packages"
+    ids = {row.get("PackageIdentifier") for row in packages if isinstance(row, dict)}
+    if "Contoso.KeepApp" not in ids or "Contoso.UpgradeApp" not in ids:
+        return f"expected Contoso Keep/Upgrade package ids, got {ids!r}"
+    text = checklist.read_text(encoding="utf-8")
+    if "New Tool" not in text or "日本語エディタ" not in text:
+        return "unmatched checklist missing expected inventory apps"
+    if "matched 2" not in result.stderr and "matched 2," not in result.stderr:
+        # stderr summary is informational; tolerate wording variants.
+        if "matched 2" not in result.stderr:
+            return f"stderr missing match summary, got {result.stderr!r}"
+    return None
+
+
 def expected_blocked_live_scan_code() -> int:
     """
     Expected exit code when a live scan is attempted under the skip flag.
@@ -443,6 +485,22 @@ def build_cases(workdir: Path) -> list[Case]:
             stderr_contains=("unable to read",),
         ),
         Case(
+            name="from-json-winget",
+            args=[
+                "--from-json",
+                str(NEW_JSON),
+                "--format",
+                "winget",
+                "--winget-list",
+                str(WINGET_LIST_JSON),
+                "--output",
+                str(workdir / "winget-packages.json"),
+            ],
+            expect_code=0,
+            stderr_contains=("matched 2", "unmatched 2"),
+            check=_check_winget_bridge,
+        ),
+        Case(
             name="blocked-live-scan",
             args=["--format", "json"],
             expect_code=expected_blocked_live_scan_code(),
@@ -522,7 +580,12 @@ def run_harness(transcript_dir: Optional[Path] = None) -> int:
     Returns:
         int: ``0`` when every case passes, ``1`` on fixture or assertion failure.
     """
-    if not OLD_JSON.is_file() or not NEW_JSON.is_file() or not LEGACY_JSON.is_file():
+    if (
+        not OLD_JSON.is_file()
+        or not NEW_JSON.is_file()
+        or not LEGACY_JSON.is_file()
+        or not WINGET_LIST_JSON.is_file()
+    ):
         print(
             f"error: harness fixtures missing under {FIXTURE_DIR}",
             file=sys.stderr,

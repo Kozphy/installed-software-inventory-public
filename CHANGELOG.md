@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-24
+
 ### Added
 
+- ``--format winget`` reinstall bridge: maps Uninstall inventory rows to
+  importable winget ``PackageIdentifier`` values and writes a
+  packages.schema.2.0 import JSON for ``winget import``.
+- Unmatched Markdown checklist (``*.unmatched.md`` sidecar or
+  ``--unmatched-output``) for apps winget cannot restore.
+- ``--winget-list PATH`` offline fixture for CI / ``--from-json`` workflows
+  (skips live ``winget list``).
+- ``--include-versions`` to pin versions in the winget import document.
 - CLI process harness (`scripts/run_cli_harness.py`) that drives
   `python -m software_inventory` with fixture snapshots, checks exit codes
   and UTF-8 output, and never touches the live Registry.
@@ -16,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   envelope) without scanning the Registry. Works on any platform.
 - `SOFTWARE_INVENTORY_SKIP_LIVE_SCAN` is now enforced in the collector so CI
   and the harness cannot accidentally query Uninstall keys.
+
+### Notes
+
+- Live ``winget list`` is read-only; the tool never runs ``winget import`` or
+  uninstall commands. ARP\\ / MSIX\\ synthetic IDs are treated as non-importable.
 
 ## [1.1.0] - 2026-07-17
 

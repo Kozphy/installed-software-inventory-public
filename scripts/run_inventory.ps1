@@ -73,6 +73,20 @@ if ($LASTEXITCODE -ne 0) {
 
 Copy-Item -LiteralPath $JsonPath -Destination $LatestPath -Force
 
+$WingetPath = Join-Path -Path $ReportsDir -ChildPath "winget-packages-$Stamp.json"
+$ChecklistPath = Join-Path -Path $ReportsDir -ChildPath "winget-packages-$Stamp.unmatched.md"
+Write-Host "Building winget import + unmatched checklist..."
+& python -m software_inventory --from-json "$JsonPath" --format winget --output "$WingetPath"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Winget bridge failed with exit code $LASTEXITCODE (is winget installed?)." -ForegroundColor Yellow
+}
+else {
+    Write-Host "  Winget:    $WingetPath"
+    if (Test-Path -LiteralPath $ChecklistPath) {
+        Write-Host "  Unmatched: $ChecklistPath"
+    }
+}
+
 Write-Host ""
 Write-Host "Reports written:"
 Write-Host "  JSON:   $JsonPath"

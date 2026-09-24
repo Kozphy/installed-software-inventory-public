@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Keep App",
+    "id": "Contoso.KeepApp",
+    "version": "1.0.0",
+    "source": "winget"
+  },
+  {
+    "name": "Upgrade App 2.0.0",
+    "id": "Contoso.UpgradeApp",
+    "version": "2.0.0",
+    "source": "winget"
+  },
+  {
+    "name": "Canva",
+    "id": "ARP\\User\\X64\\3d0ba22d-e02b-5c6d-93a1-4e2a9af9c1f2",
+    "version": "1.124.1",
+    "source": ""
+  },
+  {
+    "name": "Visual Studio Code",
+    "id": "Microsoft.VisualStudioCode",
+    "version": "1.90.0",
+    "source": "winget"
+  }
+]
