@@ -39,6 +39,7 @@ TABLE_COLUMNS: tuple[tuple[str, str, int], ...] = (
     ("Architecture", "architecture", 12),
     ("Install Date", "install_date", 12),
     ("Size", "size", 10),
+    ("Source", "source", 8),
 )
 
 
@@ -93,6 +94,7 @@ def _row_values(entry: SoftwareEntry) -> dict[str, str]:
         "architecture": entry.architecture,
         "install_date": entry.install_date or "",
         "size": format_size_human(entry.estimated_size_kb),
+        "source": entry.source,
     }
 
 

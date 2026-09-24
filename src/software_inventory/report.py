@@ -1,16 +1,17 @@
 """
 Versioned inventory report envelope and scan metadata.
 
-Builds the v1.1 JSON report shape used as the default CLI ``--format json``
-output and as the preferred snapshot format for ``diff``:
+Builds the versioned JSON report shape used as the default CLI
+``--format json`` output and as the preferred snapshot format for ``diff``:
 
     prepared SoftwareEntry list + PrepareStats
         → ScanMetadata (timing, host, filter counts)
         → InventoryReport envelope
         → exporters.export_json / load_entries_from_payload
 
-Also deserializes both legacy top-level arrays and v1.1 envelopes so older
-snapshots remain comparable.
+Also deserializes legacy top-level arrays and v1.1/v1.2 envelopes so older
+snapshots remain comparable. v1.2 only adds the per-row ``source`` tag; v1.1
+rows load with ``source="registry"``.
 """
 
 from __future__ import annotations
@@ -19,10 +20,10 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
-from software_inventory.models import SoftwareEntry
+from software_inventory.models import SOURCE_REGISTRY, SoftwareEntry
 
-SCHEMA_VERSION = "1.1"
-SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.1"})
+SCHEMA_VERSION = "1.2"
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.1", "1.2"})
 
 
 @dataclass(frozen=True)
@@ -195,7 +196,7 @@ def build_report(
     Args:
         entries (Sequence[SoftwareEntry]): Prepared software rows.
         scan (ScanMetadata): Audit metadata for this run.
-        schema_version (str): Envelope version (default ``1.1``).
+        schema_version (str): Envelope version (default ``SCHEMA_VERSION``).
 
     Returns:
         InventoryReport: Immutable report ready for JSON export.
@@ -220,7 +221,7 @@ def entry_from_dict(data: dict[str, Any]) -> SoftwareEntry:
     Returns:
         SoftwareEntry: Row ready for diff/export. Missing ``scope`` /
         ``architecture`` become ``unknown``; missing ``registry_path`` becomes
-        ``""``.
+        ``""``; missing ``source`` becomes ``registry``.
 
     Raises:
         ValueError: Invalid ``name`` or non-integer ``estimated_size_kb``.
@@ -259,6 +260,7 @@ def entry_from_dict(data: dict[str, Any]) -> SoftwareEntry:
         registry_path=_optional_str(data.get("registry_path")) or "",
         release_type=_optional_str(data.get("release_type")),
         system_component=system_component,
+        source=(_optional_str(data.get("source")) or SOURCE_REGISTRY).lower(),
     )
 
 
@@ -280,7 +282,7 @@ def _optional_str(value: Any) -> Optional[str]:
 
 def load_entries_from_payload(payload: Any) -> list[SoftwareEntry]:
     """
-    Accept either a legacy top-level array or a v1.1 report envelope.
+    Accept either a legacy top-level array or a v1.1/v1.2 report envelope.
 
     Args:
         payload (Any): Parsed JSON value.
@@ -306,7 +308,7 @@ def load_entries_from_payload(payload: Any) -> list[SoftwareEntry]:
     if schema is None:
         raise ValueError(
             "report object is missing 'schema_version'; "
-            "use a legacy JSON array or a v1.1 envelope"
+            "use a legacy JSON array or a v1.1/v1.2 envelope"
         )
     if schema not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValueError(

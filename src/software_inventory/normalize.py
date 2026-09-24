@@ -5,6 +5,7 @@ Sits between collectors and exporters:
 
     raw SoftwareEntry list (already field-normalized by the collector)
         → deduplicate overlapping hive views (version *included* in key)
+        → drop Appx rows already covered by a Registry row (cross-source merge)
         → drop blank names / system components / updates (unless opted in)
         → optional ``--search`` substring filter
         → alphabetical sort
@@ -27,7 +28,7 @@ import re
 from datetime import date, datetime
 from typing import Iterable, Optional, Sequence
 
-from software_inventory.models import SoftwareEntry
+from software_inventory.models import SOURCE_APPX, SOURCE_REGISTRY, SoftwareEntry
 from software_inventory.report import PrepareStats
 
 _UPDATE_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -389,6 +390,60 @@ def deduplicate_entries(entries: Sequence[SoftwareEntry]) -> list[SoftwareEntry]
     return list(chosen.values())
 
 
+def merge_cross_source_duplicates(entries: Sequence[SoftwareEntry]) -> list[SoftwareEntry]:
+    """
+    Drop Appx rows that describe an app the Registry already lists.
+
+    Some packaged apps register both an MSIX package and an Uninstall key.
+    The Registry row wins because it carries uninstall strings and size, and
+    it is what winget's ``ARP\\`` matching sees.
+
+    Args:
+        entries (Sequence[SoftwareEntry]): Rows after same-source dedupe.
+
+    Returns:
+        list[SoftwareEntry]: Input order preserved, shadowed Appx rows removed.
+
+    Notes:
+        An Appx row is shadowed when a Registry row has the same
+        case-insensitive name and the publishers agree (equal, or either one
+        is missing). Versions are ignored: the two catalogs often disagree on
+        version formatting for the same install.
+    """
+    registry_publishers: dict[str, set[Optional[str]]] = {}
+    for entry in entries:
+        if entry.source != SOURCE_REGISTRY:
+            continue
+        name = (entry.name or "").strip().lower()
+        if name:
+            registry_publishers.setdefault(name, set()).add(_publisher_key(entry))
+
+    merged: list[SoftwareEntry] = []
+    for entry in entries:
+        if entry.source == SOURCE_APPX:
+            publishers = registry_publishers.get((entry.name or "").strip().lower())
+            if publishers is not None:
+                publisher = _publisher_key(entry)
+                if publisher is None or None in publishers or publisher in publishers:
+                    continue
+        merged.append(entry)
+    return merged
+
+
+def _publisher_key(entry: SoftwareEntry) -> Optional[str]:
+    """
+    Lowercased publisher for cross-source comparison, or None when missing.
+
+    Args:
+        entry (SoftwareEntry): Row to key.
+
+    Returns:
+        str | None: Normalized publisher text.
+    """
+    publisher = (entry.publisher or "").strip().lower()
+    return publisher or None
+
+
 def sort_entries(entries: Iterable[SoftwareEntry]) -> list[SoftwareEntry]:
     """
     Sort entries alphabetically by application name (case-insensitive).
@@ -459,9 +514,10 @@ def prepare_inventory_with_stats(
         ``filtered_system_component_count`` / ``filtered_update_count`` only
         count those two filter reasons. Blank-name drops and ``--search`` misses
         are *not* reflected in those counters (they still reduce ``result_count``).
+        Appx rows merged into a Registry row count toward ``deduplicated_count``.
     """
     raw_list = list(entries)
-    unique = deduplicate_entries(raw_list)
+    unique = merge_cross_source_duplicates(deduplicate_entries(raw_list))
 
     filtered_system = 0
     filtered_updates = 0

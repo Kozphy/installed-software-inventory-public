@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-24
+
+### Added
+
+- Read-only Appx / MSIX collector (`collectors/windows_appx.py`): Microsoft
+  Store and packaged apps now appear in the inventory. It enumerates the
+  current user's packages through `Windows.Management.Deployment.PackageManager`
+  with a fixed Windows PowerShell 5.1 script (`-EncodedCommand`, no user
+  input), so display names are localized. Resource packages are dropped;
+  frameworks and OS-signed packages are flagged `system_component`.
+- `--source all|registry|appx` to choose collectors (default `all`). With
+  `--from-json` it filters rows by source tag.
+- Per-row `source` field (`registry` / `appx`) in JSON, CSV (appended last
+  column), and a `Source` table column.
+- Cross-source merge: an Appx row with the same name and a compatible
+  publisher as a Registry row is dropped (the Registry row keeps uninstall
+  strings and size) and counted in `deduplicated_count`.
+- Harness cases `from-json-source-appx`, `from-json-mixed-merge`, and
+  `blocked-live-appx-scan`; unit tests in `tests/test_appx_collector.py`.
+
+### Changed
+
+- Report envelope is now `schema_version` **1.2**. v1.1 envelopes and legacy
+  arrays still load; rows without `source` default to `registry`.
+- Diff identity for Appx rows is package family + architecture, so version
+  upgrades (which change the install folder) read as Changed. `name` is now a
+  compared field.
+- If the Appx collector fails during `--source all`, the scan logs a warning
+  and continues with Registry rows only.
+
 ## [1.2.0] - 2026-09-24
 
 ### Added

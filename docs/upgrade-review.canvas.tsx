@@ -29,8 +29,8 @@ const CAPABILITY = {
   ],
   series: [
     {
-      name: "This repo (v1.2)",
-      data: [2, 3, 5, 5, 5, 2],
+      name: "This repo (v1.3)",
+      data: [3, 3, 5, 5, 5, 2],
       tone: "info" as const,
     },
     {
@@ -56,7 +56,7 @@ const COMPETITORS = [
     project: "This repo",
     stars: "0",
     lang: "Python",
-    sources: "HKLM 32/64 + HKCU Uninstall",
+    sources: "HKLM 32/64 + HKCU Uninstall + Appx/MSIX (current user)",
     reinstall: "winget import JSON + unmatched checklist",
     writes: "Never",
     bestFor: "Safe audit, diffs, reinstall companion",
@@ -102,23 +102,23 @@ const COMPETITORS = [
 const ARCHITECTURE = [
   {
     layer: "Collector",
-    today: "windows_registry only",
-    gap: "No Appx / package-manager collectors",
+    today: "windows_registry + windows_appx (current user)",
+    gap: "No formal collector protocol; no Chocolatey / Scoop collectors",
   },
   {
     layer: "Normalize",
-    today: "Dedupe key includes version; filters updates/system",
-    gap: "No source tags; blank install_location weakens identity",
+    today: "Dedupe key includes version; per-row source tags; Appx→Registry merge",
+    gap: "Blank install_location weakens Registry identity",
   },
   {
     layer: "Report",
-    today: "v1.1 envelope + privacy-aware scan metadata",
+    today: "v1.2 envelope + privacy-aware scan metadata",
     gap: "No checked-in JSON Schema artifact for CI validation",
   },
   {
     layer: "Diff",
-    today: "Identity = name + publisher + location (version excluded)",
-    gap: "Publisher rename / path move shows as remove + add",
+    today: "Registry: name + publisher + location; Appx: family + arch",
+    gap: "Registry publisher rename / path move shows as remove + add",
   },
   {
     layer: "Export",
@@ -153,17 +153,17 @@ const UPGRADES: {
   {
     id: "P1",
     title: "Appx / MSIX collector",
-    status: "next",
+    status: "done",
     why: "Store apps never appear in Uninstall keys — the coverage hole every competitor calls out.",
-    work: "Read-only Appx enumeration → SoftwareEntry with source=appx; merge policy in prepare.",
+    work: "Shipped in v1.3.0: PackageManager enumeration via PowerShell 5.1, source=appx rows, --source flag, Appx→Registry merge, schema 1.2.",
     effort: "M",
   },
   {
     id: "P2",
-    title: "Collector protocol + schema 2.0",
-    status: "planned",
+    title: "Collector protocol + JSON Schema",
+    status: "next",
     why: "Scale to multiple sources cleanly and enable CI contract tests.",
-    work: "Collector protocol; source field on entries; JSON Schema validated in CI; golden fixtures.",
+    work: "Collector protocol; JSON Schema file validated in CI; golden fixtures. (Per-row source tags already shipped in v1.3.0.)",
     effort: "M–L",
   },
   {
@@ -206,13 +206,13 @@ export default function RepoUpgradeReview() {
         <H1>Installed Software Inventory — Upgrade Review</H1>
         <Text tone="secondary">
           Architecture and competitive review from local source + GitHub
-          metadata · updated 24 Sep 2026 after the v1.2.0 winget bridge.
+          metadata · updated 24 Sep 2026 after the v1.3.0 Appx collector.
         </Text>
         <Row gap={8} style={{ flexWrap: "wrap" }}>
-          <Pill tone="info">v1.2.0</Pill>
-          <Pill tone="success">66 tests · 15 harness cases</Pill>
+          <Pill tone="info">v1.3.0</Pill>
+          <Pill tone="success">102 tests · 18 harness cases</Pill>
           <Pill tone="neutral">stdlib only · 0 runtime deps</Pill>
-          <Pill tone="warning">Coverage: Uninstall keys only</Pill>
+          <Pill tone="success">Coverage: Uninstall keys + Appx/MSIX</Pill>
         </Row>
       </Stack>
 
@@ -220,15 +220,15 @@ export default function RepoUpgradeReview() {
         <Stat value="5/5" label="Safety score" tone="success" />
         <Stat value="5/5" label="Snapshot / diff score" tone="success" />
         <Stat value="3/5" label="Reinstall score (was 1/5)" tone="info" />
-        <Stat value="2/5" label="Coverage score" tone="warning" />
+        <Stat value="3/5" label="Coverage score (was 2/5)" tone="info" />
       </Grid>
 
       <Callout tone="info" title="Core finding">
         Engineering quality is already strong (stdlib pipeline, envelope schema,
-        identity-aware diff, CI + process harness). The v1.2.0 winget bridge
-        turns the tool from an auditor into an auditor plus reinstall
-        companion. The remaining gap is coverage: Store/MSIX apps are invisible
-        to Uninstall keys, so P1 is next.
+        identity-aware diff, CI + process harness). v1.2.0 added the winget
+        reinstall bridge, and v1.3.0 closes the Store/MSIX coverage hole with a
+        read-only Appx collector. The next lever is structural: a collector
+        protocol and a CI-validated JSON Schema (P2).
       </Callout>
 
       <Stack gap={12}>
@@ -284,8 +284,9 @@ export default function RepoUpgradeReview() {
             <CardHeader>Safety contract</CardHeader>
             <CardBody>
               <Text>
-                Read-only Registry, no network for scans, no Win32_Product,
-                SOFTWARE_INVENTORY_SKIP_LIVE_SCAN enforced in collector + CI.
+                Read-only Registry, enumeration-only Appx queries, no network
+                for scans, no Win32_Product, SOFTWARE_INVENTORY_SKIP_LIVE_SCAN
+                enforced in both collectors + CI.
                 The winget bridge only reads winget list; it never imports.
               </Text>
             </CardBody>
@@ -303,7 +304,7 @@ export default function RepoUpgradeReview() {
             <CardHeader>Testability</CardHeader>
             <CardBody>
               <Text>
-                66 unit tests + 15 CLI process harness cases against fixtures;
+                102 unit tests + 18 CLI process harness cases against fixtures;
                 --from-json and --winget-list work offline; Windows CI matrix
                 3.10–3.13.
               </Text>
@@ -365,12 +366,12 @@ export default function RepoUpgradeReview() {
       </Stack>
 
       <Callout tone="success" title="Recommended next build">
-        P1: a read-only Appx/MSIX collector with source tags, so Store apps
-        show up in snapshots, diffs, and the unmatched reinstall checklist.
+        P2: a collector protocol plus a checked-in JSON Schema validated in
+        CI, so new sources (Chocolatey, Scoop) plug in without touching the CLI.
       </Callout>
 
       <Text size="small" style={{ color: theme.text.tertiary }}>
-        Evidence: local pytest 66/66, CLI harness 15/15, GitHub API for
+        Evidence: local pytest 102/102, CLI harness 18/18, GitHub API for
         competitor star counts.
       </Text>
     </Stack>

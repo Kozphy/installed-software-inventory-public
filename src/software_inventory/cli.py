@@ -4,7 +4,8 @@ Command-line interface — the product surface for humans and automation.
 Wires the inventory pipeline and the snapshot ``diff`` subcommand:
 
     Scan:
-        flags → Registry | ``--from-json`` → prepare → report → table/json/csv/winget
+        flags → Registry + Appx (``--source``) | ``--from-json``
+            → prepare → report → table/json/csv/winget
     Diff:
         OLD.json + NEW.json → compare → table/json
 
@@ -12,8 +13,9 @@ Public exit-code contract (do not change lightly):
     0 success · 1 runtime/I/O (incl. skip-live-scan RuntimeError on Windows) ·
     2 usage (argparse) · 3 unsupported platform for live scans.
 
-Read-only by design: never modifies the Registry or uninstalls software.
-``--format winget`` only runs ``winget list`` (read) and never imports.
+Read-only by design: never modifies the Registry, packages, or uninstalls
+software. ``--format winget`` only runs ``winget list`` (read) and never
+imports; the Appx collector only enumerates packages.
 """
 
 
@@ -29,7 +31,11 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from software_inventory import __version__
-from software_inventory.collectors import collect_from_registry, describe_collector_sources
+from software_inventory.collectors import (
+    SOURCE_CHOICES,
+    collect_inventory,
+    describe_collector_sources,
+)
 from software_inventory.diff import compare_inventories, load_inventory_file
 from software_inventory.exporters import (
     export_csv,
@@ -95,9 +101,20 @@ def build_scan_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="software_inventory",
         description=(
-            "Scan local Windows Uninstall Registry keys and list installed "
-            "software. Read-only: never modifies the Registry or uninstalls apps. "
+            "Scan local Windows Uninstall Registry keys and Appx/MSIX (Microsoft "
+            "Store) packages and list installed software. Read-only: never "
+            "modifies the Registry or packages, or uninstalls apps. "
             "Use 'software_inventory diff OLD.json NEW.json' to compare snapshots."
+        ),
+    )
+    parser.add_argument(
+        "--source",
+        choices=SOURCE_CHOICES,
+        default="all",
+        help=(
+            "Collectors to run (default: all). 'registry' = Uninstall keys, "
+            "'appx' = Store/MSIX packages. With --from-json, keeps only rows "
+            "with that source tag."
         ),
     )
     parser.add_argument(
@@ -274,6 +291,7 @@ def run_inventory(
     include_versions: bool = False,
     winget_list: Optional[Path] = None,
     unmatched_output: Optional[Path] = None,
+    source: str = "all",
     entries=None,
     hostname: Optional[str] = None,
     platform_name: Optional[str] = None,
@@ -298,8 +316,10 @@ def run_inventory(
         winget_list (Path | None): Offline winget package fixture for
             ``--format winget``; when None, runs live ``winget list``.
         unmatched_output (Path | None): Checklist path for unmatched apps.
+        source (str): ``all``, ``registry``, or ``appx`` collectors for a
+            live scan; ignored when ``entries`` is given.
         entries: Preloaded ``SoftwareEntry`` iterable; when None, calls
-            ``collect_from_registry()``.
+            ``collect_inventory(source)``.
         hostname (str | None): Override for scan metadata hostname.
         platform_name (str | None): Override for scan metadata platform.
         collector_sources (Sequence[str] | None): Override source labels
@@ -312,8 +332,12 @@ def run_inventory(
         ``EXIT_RUNTIME``; unknown format → ``EXIT_USAGE``.
     """
     started_at = datetime.now(timezone.utc)
+    collected_sources: Optional[list[str]] = None
     try:
-        raw = list(entries) if entries is not None else collect_from_registry()
+        if entries is not None:
+            raw = list(entries)
+        else:
+            raw, collected_sources = collect_inventory(source)
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_UNSUPPORTED
@@ -330,11 +354,12 @@ def run_inventory(
     )
     completed_at = datetime.now(timezone.utc)
 
-    sources = (
-        list(collector_sources)
-        if collector_sources is not None
-        else describe_collector_sources()
-    )
+    if collector_sources is not None:
+        sources = list(collector_sources)
+    elif collected_sources is not None:
+        sources = collected_sources
+    else:
+        sources = describe_collector_sources()
     scan = build_scan_metadata(
         started_at=started_at,
         completed_at=completed_at,
@@ -523,6 +548,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_RUNTIME
+        if args.source != "all":
+            entries = [entry for entry in entries if entry.source == args.source]
         return run_inventory(
             format_name=args.format,
             output=args.output,
@@ -557,6 +584,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         include_versions=args.include_versions,
         winget_list=args.winget_list,
         unmatched_output=args.unmatched_output,
+        source=args.source,
     )
 
 

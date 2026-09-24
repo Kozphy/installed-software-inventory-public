@@ -6,9 +6,9 @@ it, prepare/dedupe refine it, exporters serialize it, and ``diff`` compares
 snapshots of it. Field names intentionally mirror Uninstall Registry values so
 auditors can trace a row back to its hive key via ``registry_path``.
 
-This is not a complete software census of the machine — only programs that
-registered an Uninstall key (see the Registry collector module for coverage
-gaps such as Store/portable apps).
+Rows come from two read-only collectors, tagged by ``source``: the Uninstall
+Registry (``registry``) and the per-user Appx/MSIX package catalog (``appx``,
+Microsoft Store and sideloaded packages). Portable apps are still invisible.
 """
 
 from __future__ import annotations
@@ -16,11 +16,20 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Optional
 
+SOURCE_REGISTRY = "registry"
+SOURCE_APPX = "appx"
+KNOWN_SOURCES: tuple[str, ...] = (SOURCE_REGISTRY, SOURCE_APPX)
+
+_PROVENANCE_FIELDS = frozenset(
+    {"name", "registry_path", "scope", "architecture", "system_component", "source"}
+)
+
 
 @dataclass(frozen=True)
 class SoftwareEntry:
     """
-    Immutable inventory row for one Uninstall-registered application.
+    Immutable inventory row for one installed application (Uninstall key or
+    Appx package).
 
     Built for personal audits and fleet snapshot diffs: it carries enough
     provenance to explain *where* a row came from, while staying safe to
@@ -43,9 +52,14 @@ class SoftwareEntry:
         uninstall_string: Uninstall command text for documentation only.
         quiet_uninstall_string: Quiet uninstall command when publishers provide one.
         registry_path: Full Uninstall subkey path used as the source of truth.
+            Appx rows use ``appx:<PackageFamilyName>``, which is stable across
+            package versions.
         release_type: Registry ``ReleaseType``; feeds update/hotfix heuristics.
-        system_component: True when Registry ``SystemComponent`` is set; hidden
-            from default exports to reduce OS plumbing noise.
+        system_component: True when Registry ``SystemComponent`` is set (or the
+            Appx package is a framework / OS-signed); hidden from default
+            exports to reduce OS plumbing noise.
+        source: Collector that produced the row: ``registry`` or ``appx``.
+            Snapshots written before v1.3 have no tag and load as ``registry``.
     """
 
     name: str
@@ -61,6 +75,7 @@ class SoftwareEntry:
     registry_path: str
     release_type: Optional[str]
     system_component: bool
+    source: str = "registry"
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -83,13 +98,14 @@ class SoftwareEntry:
             int: Count of optional fields that are present and non-blank.
 
         Notes:
-            ``name``, ``registry_path``, ``scope``, ``architecture``, and
-            ``system_component`` are excluded so provenance alone cannot inflate
-            the score. Ties fall back to lexicographic ``registry_path``.
+            ``name``, ``registry_path``, ``scope``, ``architecture``,
+            ``system_component``, and ``source`` are excluded so provenance
+            alone cannot inflate the score. Ties fall back to lexicographic
+            ``registry_path``.
         """
         score = 0
         for field in fields(self):
-            if field.name in {"name", "registry_path", "scope", "architecture", "system_component"}:
+            if field.name in _PROVENANCE_FIELDS:
                 continue
             value = getattr(self, field.name)
             if value is None:
@@ -114,5 +130,9 @@ CSV_FIELDNAMES: tuple[str, ...] = (
     "registry_path",
     "release_type",
     "system_component",
+    "source",
 )
-"""Public CSV column contract; order is stable across releases and must match SoftwareEntry."""
+"""Public CSV column contract; order is stable across releases and must match SoftwareEntry.
+
+New columns are only ever appended so positional CSV consumers keep working.
+"""

@@ -127,9 +127,10 @@ class ReportEnvelopeTests(unittest.TestCase):
             path = Path(tmp) / "out" / "report.json"
             export_json(prepared, output=path, pretty=True, report=report)
             payload = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(payload["schema_version"], "1.1")
+            self.assertEqual(payload["schema_version"], "1.2")
             self.assertIn("software", payload)
             self.assertEqual(payload["software"][0]["name"], "Sample App")
+            self.assertEqual(payload["software"][0]["source"], "registry")
 
     def test_legacy_json_array(self) -> None:
         entries = [make_entry(name="レガシー")]
@@ -155,7 +156,7 @@ class ReportEnvelopeTests(unittest.TestCase):
             )
             self.assertEqual(code, EXIT_OK)
             payload = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(payload["schema_version"], "1.1")
+            self.assertEqual(payload["schema_version"], "1.2")
             self.assertEqual(payload["scan"]["hostname"], "fixture-host")
             self.assertEqual(payload["scan"]["collector_sources"], ["fixture-source"])
             self.assertEqual(payload["software"][0]["name"], "CLI App")
@@ -215,6 +216,21 @@ class PayloadLoadingTests(unittest.TestCase):
         }
         entries = load_entries_from_payload(payload)
         self.assertEqual(entries[0].name, "Env App")
+
+    def test_v1_1_envelope_defaults_source_to_registry(self) -> None:
+        row = make_entry(name="Old App").to_dict()
+        row.pop("source")
+        entries = load_entries_from_payload(
+            {"schema_version": "1.1", "scan": {}, "software": [row]}
+        )
+        self.assertEqual(entries[0].source, "registry")
+
+    def test_v1_2_envelope_keeps_appx_source(self) -> None:
+        row = make_entry(name="Store App", source="appx").to_dict()
+        entries = load_entries_from_payload(
+            {"schema_version": "1.2", "scan": {}, "software": [row]}
+        )
+        self.assertEqual(entries[0].source, "appx")
 
     def test_unsupported_schema(self) -> None:
         with self.assertRaises(ValueError) as ctx:

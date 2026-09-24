@@ -32,6 +32,7 @@ OLD_JSON = FIXTURE_DIR / "old.json"
 NEW_JSON = FIXTURE_DIR / "new.json"
 LEGACY_JSON = FIXTURE_DIR / "legacy.json"
 WINGET_LIST_JSON = FIXTURE_DIR / "winget-list.json"
+MIXED_SOURCES_JSON = FIXTURE_DIR / "mixed-sources.json"
 PROCESS_TIMEOUT_SECONDS = 30
 
 
@@ -177,7 +178,7 @@ def _json_payload(path: Path) -> object:
 
 def _check_envelope(result: CommandResult, workdir: Path) -> Optional[str]:
     """
-    Assert the v1.1 JSON envelope written by a harness case is well-formed.
+    Assert the v1.2 JSON envelope written by a harness case is well-formed.
 
     Args:
         result (CommandResult): Unused process result (signature for Case.check).
@@ -192,11 +193,13 @@ def _check_envelope(result: CommandResult, workdir: Path) -> Optional[str]:
     payload = _json_payload(path)
     if not isinstance(payload, dict):
         return "expected JSON object envelope"
-    if payload.get("schema_version") != "1.1":
+    if payload.get("schema_version") != "1.2":
         return f"unexpected schema_version {payload.get('schema_version')!r}"
     software = payload.get("software")
     if not isinstance(software, list) or not software:
         return "envelope missing software list"
+    if any(row.get("source") not in {"registry", "appx"} for row in software):
+        return "every software row must carry a registry/appx source tag"
     names = {row.get("name") for row in software if isinstance(row, dict)}
     if "日本語エディタ" not in names:
         return "UTF-8 display name missing from JSON envelope"
@@ -321,6 +324,45 @@ def _check_winget_bridge(result: CommandResult, workdir: Path) -> Optional[str]:
     return None
 
 
+def _check_mixed_merge(result: CommandResult, workdir: Path) -> Optional[str]:
+    """
+    Assert Registry rows shadow matching Appx rows and frameworks stay hidden.
+
+    Args:
+        result (CommandResult): Unused process result (signature for Case.check).
+        workdir (Path): Temp directory containing ``mixed.json``.
+
+    Returns:
+        str | None: Failure message, or None when the merge policy held.
+    """
+    path = workdir / "mixed.json"
+    if not path.is_file():
+        return f"missing output file {path}"
+    payload = _json_payload(path)
+    if not isinstance(payload, dict):
+        return "expected JSON object envelope"
+    software = payload.get("software")
+    if not isinstance(software, list):
+        return "envelope missing software list"
+    rows = [(row.get("name"), row.get("source")) for row in software if isinstance(row, dict)]
+    expected = [
+        ("Dual Packaged App", "registry"),
+        ("Keep App", "registry"),
+        ("Windows Terminal", "appx"),
+    ]
+    if rows != expected:
+        return f"merged rows {rows!r}, expected {expected!r}"
+    scan = payload.get("scan") or {}
+    if scan.get("deduplicated_count") != 1:
+        return f"deduplicated_count={scan.get('deduplicated_count')!r}, expected 1"
+    if scan.get("filtered_system_component_count") != 1:
+        return (
+            "filtered_system_component_count="
+            f"{scan.get('filtered_system_component_count')!r}, expected 1"
+        )
+    return None
+
+
 def expected_blocked_live_scan_code() -> int:
     """
     Expected exit code when a live scan is attempted under the skip flag.
@@ -332,16 +374,19 @@ def expected_blocked_live_scan_code() -> int:
     return 3 if sys.platform != "win32" else 1
 
 
-def expected_blocked_live_scan_stderr() -> tuple[str, ...]:
+def expected_blocked_live_scan_stderr(collector: str = "Registry") -> tuple[str, ...]:
     """
     Expected stderr needles for a blocked live scan.
+
+    Args:
+        collector (str): ``Registry`` or ``Appx`` — which collector refuses.
 
     Returns:
         tuple[str, ...]: Substrings that must appear on stderr.
     """
     if sys.platform != "win32":
         return ("only runs on Windows",)
-    return ("live Registry scan is disabled",)
+    return (f"live {collector} scan is disabled",)
 
 
 def build_cases(workdir: Path) -> list[Case]:
@@ -501,10 +546,43 @@ def build_cases(workdir: Path) -> list[Case]:
             check=_check_winget_bridge,
         ),
         Case(
+            name="from-json-source-appx",
+            args=[
+                "--from-json",
+                str(MIXED_SOURCES_JSON),
+                "--source",
+                "appx",
+                "--format",
+                "table",
+            ],
+            expect_code=0,
+            stdout_contains=("Windows Terminal", "Source", "appx"),
+            stdout_not_contains=("Keep App",),
+        ),
+        Case(
+            name="from-json-mixed-merge",
+            args=[
+                "--from-json",
+                str(MIXED_SOURCES_JSON),
+                "--format",
+                "json",
+                "--output",
+                str(workdir / "mixed.json"),
+            ],
+            expect_code=0,
+            check=_check_mixed_merge,
+        ),
+        Case(
             name="blocked-live-scan",
             args=["--format", "json"],
             expect_code=expected_blocked_live_scan_code(),
             stderr_contains=expected_blocked_live_scan_stderr(),
+        ),
+        Case(
+            name="blocked-live-appx-scan",
+            args=["--source", "appx", "--format", "json"],
+            expect_code=expected_blocked_live_scan_code(),
+            stderr_contains=expected_blocked_live_scan_stderr("Appx"),
         ),
     ]
 
@@ -585,6 +663,7 @@ def run_harness(transcript_dir: Optional[Path] = None) -> int:
         or not NEW_JSON.is_file()
         or not LEGACY_JSON.is_file()
         or not WINGET_LIST_JSON.is_file()
+        or not MIXED_SOURCES_JSON.is_file()
     ):
         print(
             f"error: harness fixtures missing under {FIXTURE_DIR}",

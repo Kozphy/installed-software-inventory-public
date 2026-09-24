@@ -14,6 +14,10 @@ subcommand and ``scripts/run_inventory.ps1``.
 Why version is excluded from identity: an upgrade should read as
 ``1.2.3 → 1.3.0`` under Changed, not as uninstall+install noise.
 
+Appx/MSIX rows key on package family + architecture instead, because their
+install folder embeds the version (``...\\WindowsApps\\Name_1.2.3.0_x64__hash``)
+and their display name is localized.
+
 Contrast with prepare-time ``deduplication_key``, which *includes* version so
 a single scan can still list two co-installed versions as separate rows.
 """
@@ -26,11 +30,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from software_inventory.models import SoftwareEntry
+from software_inventory.models import SOURCE_APPX, SoftwareEntry
 from software_inventory.report import load_entries_from_payload
 
+_APPX_PATH_PREFIX = "appx:"
 
 DIFF_COMPARE_FIELDS: tuple[str, ...] = (
+    "name",
     "version",
     "publisher",
     "install_date",
@@ -45,10 +51,12 @@ DIFF_COMPARE_FIELDS: tuple[str, ...] = (
 )
 """Fields compared after identity match. ``registry_path`` is omitted on purpose.
 
-``publisher`` / ``install_location`` usually only appear here when normalized
-identity still matches (e.g. case or trailing-slash differences). A true
-publisher rename or move to a new folder changes the identity key and shows up
-as removed+added instead of changed.
+``name`` / ``publisher`` / ``install_location`` usually only appear here when
+normalized identity still matches (e.g. case or trailing-slash differences).
+A true publisher rename or move to a new folder changes the identity key and
+shows up as removed+added instead of changed. Appx rows are the exception:
+their identity ignores name and location, so a renamed or upgraded package
+reports those fields here.
 """
 
 
@@ -162,7 +170,13 @@ def identity_key(entry: SoftwareEntry) -> tuple[str, str, str]:
         Empty/missing ``install_location`` (common) collapses many apps onto
         name+publisher only — collisions are resolved by completeness, then
         ``registry_path``. Prefer populated InstallLocation when comparing fleets.
+
+        Appx rows return ``("appx:<family>", "", architecture)`` instead, so
+        x86 and x64 builds of one package family stay distinct.
     """
+    path = (entry.registry_path or "").strip().lower()
+    if entry.source == SOURCE_APPX and path.startswith(_APPX_PATH_PREFIX):
+        return (path, "", (entry.architecture or "").strip().lower())
     return (
         (entry.name or "").strip().lower(),
         (entry.publisher or "").strip().lower(),
