@@ -48,7 +48,16 @@ WINGET_LIST_TIMEOUT_SECONDS = 180
 
 @dataclass(frozen=True)
 class WingetPackage:
-    """One row from ``winget list`` (or an equivalent fixture)."""
+    """
+    One row from ``winget list`` (or an equivalent fixture).
+
+    Attributes:
+        name: Display name as winget prints it.
+        package_id: ``PackageIdentifier`` (catalog Id, or ``ARP\\`` /
+            ``MSIX\\`` synthetic Id for locally discovered apps).
+        version: Installed version, when winget reports one.
+        source: ``winget`` / ``msstore`` for catalog rows, else empty.
+    """
 
     name: str
     package_id: str
@@ -59,9 +68,10 @@ class WingetPackage:
         """
         Return True when this row can appear in a ``winget import`` document.
 
-        ARP\\ / MSIX\\ synthetic IDs and empty sources are discovery-only;
-        only catalog-backed IDs (typically ``Publisher.Product`` with Source
-        ``winget`` / ``msstore``) are safe for import.
+        Returns:
+            bool: True for catalog-backed Ids (typically ``Publisher.Product``
+            with Source ``winget`` / ``msstore``); False for empty Ids and
+            ARP\\ / MSIX\\ synthetic Ids, which are discovery-only.
         """
         package_id = (self.package_id or "").strip()
         if not package_id:
@@ -77,7 +87,13 @@ class WingetPackage:
 
 @dataclass(frozen=True)
 class MatchedPackage:
-    """One inventory entry successfully mapped to an importable winget Id."""
+    """
+    One inventory entry successfully mapped to an importable winget Id.
+
+    Attributes:
+        entry: Inventory row that was matched.
+        package: Importable winget package chosen for it.
+    """
 
     entry: SoftwareEntry
     package: WingetPackage
@@ -85,7 +101,14 @@ class MatchedPackage:
 
 @dataclass(frozen=True)
 class WingetBridgeResult:
-    """Outcome of mapping an inventory against a winget package list."""
+    """
+    Outcome of mapping an inventory against a winget package list.
+
+    Attributes:
+        matched: Inventory rows paired with an importable package.
+        unmatched: Inventory rows winget cannot restore (checklist input).
+        winget_packages: Every package winget reported, importable or not.
+    """
 
     matched: tuple[MatchedPackage, ...]
     unmatched: tuple[SoftwareEntry, ...]
@@ -93,12 +116,22 @@ class WingetBridgeResult:
 
     @property
     def matched_count(self) -> int:
-        """Number of inventory rows mapped to an importable package Id."""
+        """
+        Number of inventory rows mapped to an importable package Id.
+
+        Returns:
+            int: ``len(matched)``.
+        """
         return len(self.matched)
 
     @property
     def unmatched_count(self) -> int:
-        """Number of inventory rows with no importable winget match."""
+        """
+        Number of inventory rows with no importable winget match.
+
+        Returns:
+            int: ``len(unmatched)``.
+        """
         return len(self.unmatched)
 
 
@@ -106,8 +139,13 @@ def normalize_match_key(value: Optional[str]) -> str:
     """
     Normalize a display name for inventory ↔ winget matching.
 
-    Lowercases, collapses whitespace, strips a trailing version token so
-    ``CapCut`` and ``CapCut 9.3.0`` can meet.
+    Args:
+        value (str | None): Display name from either side of the match.
+
+    Returns:
+        str: Lowercased, whitespace-collapsed name with a trailing version
+        token removed, so ``CapCut`` and ``CapCut 9.3.0`` meet. Empty for
+        blank input; the unstripped text when stripping would leave nothing.
     """
     text = (value or "").strip().lower()
     if not text:
@@ -181,8 +219,18 @@ def _extract_source(
     """
     Read the Source column, tolerating winget's occasional off-by-one alignment.
 
-    Winget pads ``Available`` / ``Source`` inconsistently across hosts; taking
-    tokens after the Version column is more reliable than a fixed slice alone.
+    Args:
+        line (str): One data line of ``winget list`` output.
+        columns (dict[str, tuple[int, int | None]]): Header slices from
+            ``_column_slices``.
+
+    Returns:
+        str: Source name (``winget`` / ``msstore`` / other), or ``""``.
+
+    Notes:
+        Winget pads ``Available`` / ``Source`` inconsistently across hosts;
+        taking tokens after the Version column is more reliable than a fixed
+        slice alone.
     """
     known = _IMPORTABLE_SOURCES | {"winget", "msstore"}
     version_span = columns.get("Version")
@@ -207,7 +255,19 @@ def _extract_source(
 
 
 def _column_slices(header: str) -> dict[str, tuple[int, Optional[int]]]:
-    """Map winget list header labels to [start, end) character slices."""
+    """
+    Map winget list header labels to [start, end) character slices.
+
+    Args:
+        header (str): The ``Name  Id  Version ...`` header line.
+
+    Returns:
+        dict[str, tuple[int, int | None]]: Label to ``(start, end)``; the last
+        column's end is None (runs to end of line).
+
+    Raises:
+        ValueError: When the header lacks a Name or Id column.
+    """
     labels = ("Name", "Id", "Version", "Available", "Source")
     starts: dict[str, int] = {}
     for label in labels:
@@ -226,7 +286,17 @@ def _column_slices(header: str) -> dict[str, tuple[int, Optional[int]]]:
 
 
 def _slice(line: str, span: Optional[tuple[int, Optional[int]]]) -> str:
-    """Extract one fixed-width column from a winget list data line."""
+    """
+    Extract one fixed-width column from a winget list data line.
+
+    Args:
+        line (str): Data line to slice.
+        span (tuple[int, int | None] | None): Column slice, or None when the
+            header did not have that column.
+
+    Returns:
+        str: Raw (unstripped) column text, or ``""`` when out of range.
+    """
     if span is None:
         return ""
     start, end = span
@@ -418,7 +488,19 @@ def _find_package(
     by_key: dict[str, list[WingetPackage]],
     used_ids: set[str],
 ) -> Optional[WingetPackage]:
-    """Resolve the best unused importable package for one inventory entry."""
+    """
+    Resolve the best unused importable package for one inventory entry.
+
+    Args:
+        entry (SoftwareEntry): Inventory row to match.
+        by_key (dict[str, list[WingetPackage]]): Importable packages grouped
+            by ``normalize_match_key`` of their names.
+        used_ids (set[str]): Package Ids already assigned to earlier entries.
+
+    Returns:
+        WingetPackage | None: Exact-key match first, else the longest
+        containment overlap (keys of at least 4 characters), else None.
+    """
     key = normalize_match_key(entry.name)
     if not key:
         return None
@@ -549,7 +631,15 @@ def format_unmatched_markdown(
 
 
 def _md_cell(value: str) -> str:
-    """Escape pipe characters so Markdown tables stay intact."""
+    """
+    Escape pipe characters so Markdown tables stay intact.
+
+    Args:
+        value (str): Raw cell text.
+
+    Returns:
+        str: Text with ``|`` escaped and newlines flattened to spaces.
+    """
     return value.replace("|", "\\|").replace("\n", " ")
 
 

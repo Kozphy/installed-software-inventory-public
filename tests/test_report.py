@@ -59,6 +59,7 @@ class ReportEnvelopeTests(unittest.TestCase):
     """v1.1 envelope assembly, export defaults, and ``--from-json`` CLI."""
 
     def test_build_report_schema_and_counts(self) -> None:
+        """Prepare stats, UTC timing, and schema version land in the envelope without a username."""
         entries = [
             make_entry(name="App A"),
             make_entry(
@@ -111,6 +112,7 @@ class ReportEnvelopeTests(unittest.TestCase):
         self.assertNotIn("username", payload["scan"])
 
     def test_export_json_envelope_by_default(self) -> None:
+        """JSON export writes a v1.2 envelope with source tags."""
         entries = [make_entry()]
         prepared, stats = prepare_inventory_with_stats(entries)
         started = datetime(2026, 7, 17, 6, 0, 0, tzinfo=timezone.utc)
@@ -133,6 +135,7 @@ class ReportEnvelopeTests(unittest.TestCase):
             self.assertEqual(payload["software"][0]["source"], "registry")
 
     def test_legacy_json_array(self) -> None:
+        """``legacy_json`` writes a top-level array with UTF-8 names."""
         entries = [make_entry(name="レガシー")]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "legacy.json"
@@ -142,6 +145,7 @@ class ReportEnvelopeTests(unittest.TestCase):
             self.assertEqual(payload[0]["name"], "レガシー")
 
     def test_run_inventory_writes_envelope(self) -> None:
+        """``run_inventory`` writes an envelope with overridden scan metadata."""
         entries = [make_entry(name="CLI App")]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "nested" / "scan.json"
@@ -162,6 +166,7 @@ class ReportEnvelopeTests(unittest.TestCase):
             self.assertEqual(payload["software"][0]["name"], "CLI App")
 
     def test_run_inventory_legacy_json(self) -> None:
+        """``run_inventory`` honors ``legacy_json``."""
         entries = [make_entry()]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "legacy.json"
@@ -176,6 +181,7 @@ class ReportEnvelopeTests(unittest.TestCase):
             self.assertIsInstance(payload, list)
 
     def test_main_from_json_replay(self) -> None:
+        """``--from-json`` replays a saved snapshot through the CLI."""
         fixture = Path(__file__).resolve().parent / "fixtures" / "cli" / "legacy.json"
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
@@ -196,6 +202,7 @@ class ReportEnvelopeTests(unittest.TestCase):
             self.assertEqual(payload[0]["name"], "Legacy App")
 
     def test_main_from_json_missing_file(self) -> None:
+        """``--from-json`` with a missing file exits with EXIT_RUNTIME."""
         code = main(["--from-json", str(Path("no-such-snapshot.json"))])
         self.assertEqual(code, EXIT_RUNTIME)
 
@@ -204,11 +211,13 @@ class PayloadLoadingTests(unittest.TestCase):
     """Deserialization of legacy arrays and versioned report objects."""
 
     def test_load_legacy_array(self) -> None:
+        """A legacy top-level array loads as entries."""
         entries = load_entries_from_payload([make_entry().to_dict()])
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].name, "Sample App")
 
     def test_load_envelope(self) -> None:
+        """A v1.1 envelope loads its ``software`` rows."""
         payload = {
             "schema_version": "1.1",
             "scan": {},
@@ -218,6 +227,7 @@ class PayloadLoadingTests(unittest.TestCase):
         self.assertEqual(entries[0].name, "Env App")
 
     def test_v1_1_envelope_defaults_source_to_registry(self) -> None:
+        """v1.1 rows without ``source`` load as ``registry``."""
         row = make_entry(name="Old App").to_dict()
         row.pop("source")
         entries = load_entries_from_payload(
@@ -226,6 +236,7 @@ class PayloadLoadingTests(unittest.TestCase):
         self.assertEqual(entries[0].source, "registry")
 
     def test_v1_2_envelope_keeps_appx_source(self) -> None:
+        """v1.2 rows keep their ``appx`` source tag."""
         row = make_entry(name="Store App", source="appx").to_dict()
         entries = load_entries_from_payload(
             {"schema_version": "1.2", "scan": {}, "software": [row]}
@@ -233,19 +244,23 @@ class PayloadLoadingTests(unittest.TestCase):
         self.assertEqual(entries[0].source, "appx")
 
     def test_unsupported_schema(self) -> None:
+        """An unknown ``schema_version`` raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             load_entries_from_payload({"schema_version": "9.9", "software": []})
         self.assertIn("unsupported schema_version", str(ctx.exception))
 
     def test_invalid_payload_type(self) -> None:
+        """A payload that is neither list nor object raises ValueError."""
         with self.assertRaises(ValueError):
             load_entries_from_payload("nope")
 
     def test_missing_name(self) -> None:
+        """A row without ``name`` raises ValueError."""
         with self.assertRaises(ValueError):
             entry_from_dict({"version": "1.0"})
 
     def test_missing_fields_are_tolerated(self) -> None:
+        """Optional fields default when absent from a row."""
         entry = entry_from_dict({"name": "Minimal"})
         self.assertIsNone(entry.version)
         self.assertIsNone(entry.publisher)

@@ -16,6 +16,7 @@ class RegistryValueParsingTests(unittest.TestCase):
     """``_entry_from_values`` mapping from Uninstall value maps."""
 
     def test_missing_values_do_not_crash(self) -> None:
+        """Missing or invalid Uninstall values map to None instead of failing."""
         entry = _entry_from_values(
             {
                 "DisplayName": "Partial App",
@@ -43,6 +44,7 @@ class RegistryValueParsingTests(unittest.TestCase):
         self.assertFalse(entry.system_component)
 
     def test_skips_entries_without_display_name(self) -> None:
+        """Keys without a DisplayName produce no row."""
         self.assertIsNone(
             _entry_from_values(
                 {"DisplayName": None},
@@ -61,6 +63,7 @@ class RegistryValueParsingTests(unittest.TestCase):
         )
 
     def test_parses_common_registry_shapes(self) -> None:
+        """A typical Uninstall value map populates every field."""
         entry = _entry_from_values(
             {
                 "DisplayName": "Contoso Suite",

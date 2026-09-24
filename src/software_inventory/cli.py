@@ -414,6 +414,16 @@ def _export_winget_bridge(
     """
     Load winget packages, match inventory, and write import JSON + checklist.
 
+    Args:
+        prepared: Prepared ``SoftwareEntry`` rows to match.
+        output (Path | None): Import JSON path; stdout when None.
+        pretty (bool): Indent the import JSON.
+        include_versions (bool): Pin versions in the import document.
+        winget_list (Path | None): Offline package fixture; runs live
+            ``winget list`` when None.
+        unmatched_output (Path | None): Checklist path; defaults to a
+            ``*.unmatched.md`` sidecar next to ``output``.
+
     Returns:
         int: ``EXIT_OK`` or ``EXIT_RUNTIME`` on winget/I/O failures.
     """

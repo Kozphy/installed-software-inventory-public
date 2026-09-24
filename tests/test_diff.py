@@ -56,11 +56,13 @@ class DiffIdentityTests(unittest.TestCase):
     """Identity-key normalization used to match apps across snapshots."""
 
     def test_identity_excludes_version(self) -> None:
+        """Different versions of one app share an identity key."""
         a = make_entry(version="1.0")
         b = make_entry(version="2.0")
         self.assertEqual(identity_key(a), identity_key(b))
 
     def test_identity_normalizes_case_and_slashes(self) -> None:
+        """Case and trailing slashes do not change identity."""
         a = make_entry(
             name="Foo",
             publisher="Bar",
@@ -78,6 +80,7 @@ class DiffCompareTests(unittest.TestCase):
     """Added/removed/changed classification and table formatting."""
 
     def test_added_removed_changed(self) -> None:
+        """Snapshots classify rows as added, removed, changed, or unchanged."""
         old = [
             make_entry(name="Keep", version="1.0", registry_path="keep"),
             make_entry(name="Gone", version="1.0", registry_path="gone"),
@@ -108,6 +111,7 @@ class DiffCompareTests(unittest.TestCase):
         self.assertIn("install_date", changed_fields)
 
     def test_stable_ordering(self) -> None:
+        """Diff sections are sorted by name for stable output."""
         old = [
             make_entry(name="Zed", registry_path="z"),
             make_entry(name="Alpha", registry_path="a"),
@@ -122,6 +126,7 @@ class DiffCompareTests(unittest.TestCase):
         self.assertEqual([e.name for e in result.changed], ["Alpha", "Zed"])
 
     def test_non_ascii_names(self) -> None:
+        """Non-ASCII names match across snapshots."""
         old = [make_entry(name="日本語アプリ", version="1.0")]
         new = [make_entry(name="日本語アプリ", version="1.1")]
         result = compare_inventories(old, new)
@@ -129,6 +134,7 @@ class DiffCompareTests(unittest.TestCase):
         self.assertEqual(result.changed[0].name, "日本語アプリ")
 
     def test_diff_table_contains_summary(self) -> None:
+        """The diff table includes Added and Removed summary lines."""
         result = compare_inventories(
             [make_entry(name="A")],
             [make_entry(name="B", registry_path="b")],
@@ -144,6 +150,7 @@ class DiffFileLoadingTests(unittest.TestCase):
     """JSON snapshot loading for legacy arrays and v1.1 envelopes."""
 
     def test_load_legacy_and_envelope(self) -> None:
+        """Both legacy arrays and report envelopes load from disk."""
         with tempfile.TemporaryDirectory() as tmp:
             legacy = Path(tmp) / "old.json"
             envelope = Path(tmp) / "new.json"
@@ -166,6 +173,7 @@ class DiffFileLoadingTests(unittest.TestCase):
             self.assertEqual(load_inventory_file(envelope)[0].name, "Envelope")
 
     def test_invalid_json(self) -> None:
+        """Malformed JSON raises ValueError mentioning invalid JSON."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bad.json"
             path.write_text("{not-json", encoding="utf-8")
@@ -174,6 +182,7 @@ class DiffFileLoadingTests(unittest.TestCase):
             self.assertIn("invalid JSON", str(ctx.exception))
 
     def test_unsupported_schema_file(self) -> None:
+        """An unknown ``schema_version`` raises ValueError."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "future.json"
             path.write_text(
@@ -185,6 +194,7 @@ class DiffFileLoadingTests(unittest.TestCase):
             self.assertIn("unsupported schema_version", str(ctx.exception))
 
     def test_utf8_bom_is_accepted(self) -> None:
+        """A UTF-8 BOM at the start of the file is tolerated."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bom.json"
             payload = json.dumps([make_entry(name="BOM App").to_dict()])
@@ -193,6 +203,7 @@ class DiffFileLoadingTests(unittest.TestCase):
             self.assertEqual(entries[0].name, "BOM App")
 
     def test_missing_file(self) -> None:
+        """A missing snapshot path raises ValueError."""
         with self.assertRaises(ValueError):
             load_inventory_file(Path("definitely-missing-inventory-xyz.json"))
 
@@ -201,6 +212,7 @@ class DiffCliTests(unittest.TestCase):
     """CLI ``run_diff`` / ``main(['diff', ...])`` exit-code contract."""
 
     def test_run_diff_json_output_and_exit_codes(self) -> None:
+        """``run_diff`` writes JSON output and returns the documented exit codes."""
         with tempfile.TemporaryDirectory() as tmp:
             old = Path(tmp) / "old.json"
             new = Path(tmp) / "new.json"
@@ -232,6 +244,7 @@ class DiffCliTests(unittest.TestCase):
             self.assertEqual(code, EXIT_RUNTIME)
 
     def test_main_diff_subcommand(self) -> None:
+        """``main(['diff', ...])`` writes a table diff to the output file."""
         with tempfile.TemporaryDirectory() as tmp:
             old = Path(tmp) / "old.json"
             new = Path(tmp) / "new.json"

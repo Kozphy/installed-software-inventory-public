@@ -71,6 +71,7 @@ class ExporterTests(unittest.TestCase):
         ]
 
     def test_json_export_roundtrip(self) -> None:
+        """JSON export writes a file that parses back to the same rows."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "out" / "software.json"
             export_json(self.entries, output=path, pretty=True)
@@ -82,6 +83,7 @@ class ExporterTests(unittest.TestCase):
             self.assertIn("registry_path", payload[0])
 
     def test_json_compact_when_not_pretty(self) -> None:
+        """Without ``pretty`` the JSON has no indentation."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "software.json"
             export_json(self.entries, output=path, pretty=False)
@@ -89,6 +91,7 @@ class ExporterTests(unittest.TestCase):
             self.assertNotIn("\n  ", text)
 
     def test_csv_export_utf8_and_headers(self) -> None:
+        """CSV export is UTF-8 with the public header contract."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reports" / "software.csv"
             export_csv(self.entries, output=path)
@@ -103,6 +106,7 @@ class ExporterTests(unittest.TestCase):
             self.assertEqual(rows[1]["install_date"], "")
 
     def test_output_directory_creation(self) -> None:
+        """Missing parent directories are created before writing."""
         with tempfile.TemporaryDirectory() as tmp:
             nested = Path(tmp) / "a" / "b" / "c" / "inventory.json"
             self.assertFalse(nested.parent.exists())
@@ -112,6 +116,7 @@ class ExporterTests(unittest.TestCase):
             self.assertTrue(nested.is_file())
 
     def test_table_contains_columns_and_human_size(self) -> None:
+        """The table shows column headers and human-readable sizes."""
         text = format_table(self.entries)
         self.assertIn("Name", text)
         self.assertIn("Version", text)
@@ -121,10 +126,12 @@ class ExporterTests(unittest.TestCase):
         self.assertIn("512 KB", text)
 
     def test_table_empty_state(self) -> None:
+        """An empty inventory renders a friendly empty-state message."""
         text = format_table([])
         self.assertIn("no matching software entries", text)
 
     def test_long_names_are_truncated(self) -> None:
+        """Overlong names are truncated with an ellipsis."""
         long_name = "A" * 80
         text = format_table([make_entry(name=long_name)])
         # Truncation marker should appear; full 80-char name should not as one cell.

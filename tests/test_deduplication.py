@@ -46,6 +46,7 @@ class DeduplicationTests(unittest.TestCase):
     """Key equality, richness preference, and deterministic tie-breaking."""
 
     def test_identical_keys_collapse(self) -> None:
+        """Rows with the same dedupe key collapse to one."""
         sparse = make_entry(
             registry_path=r"HKEY_LOCAL_MACHINE\A\Sparse",
             install_date=None,
@@ -67,6 +68,7 @@ class DeduplicationTests(unittest.TestCase):
         self.assertGreater(result[0].completeness_score(), sparse.completeness_score())
 
     def test_prefers_richer_metadata_regardless_of_order(self) -> None:
+        """The row with more populated fields wins in either input order."""
         sparse = make_entry(registry_path="path-a", estimated_size_kb=None)
         rich = make_entry(
             registry_path="path-b",
@@ -80,6 +82,7 @@ class DeduplicationTests(unittest.TestCase):
         self.assertEqual(reverse[0].registry_path, "path-b")
 
     def test_different_keys_remain_separate(self) -> None:
+        """Different names or versions stay separate rows."""
         a = make_entry(name="App A", version="1.0", registry_path="a")
         b = make_entry(name="App B", version="1.0", registry_path="b")
         c = make_entry(name="App A", version="2.0", registry_path="c")
@@ -87,6 +90,7 @@ class DeduplicationTests(unittest.TestCase):
         self.assertEqual(len(result), 3)
 
     def test_key_normalization_is_case_insensitive(self) -> None:
+        """Case and trailing-slash differences share one dedupe key."""
         left = make_entry(
             name="Foo",
             version="1.0",
@@ -108,6 +112,7 @@ class DeduplicationTests(unittest.TestCase):
         self.assertEqual(result[0].install_date, "2026-07-01")
 
     def test_missing_values_do_not_crash_dedup(self) -> None:
+        """Rows with missing optional fields dedupe without errors."""
         entry = make_entry(
             version=None,
             publisher=None,

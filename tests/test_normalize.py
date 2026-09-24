@@ -57,11 +57,13 @@ class NormalizeStringTests(unittest.TestCase):
     """Registry string coercion at the collector→model boundary."""
 
     def test_missing_and_blank(self) -> None:
+        """None, empty, and whitespace-only strings normalize to None."""
         self.assertIsNone(normalize_string(None))
         self.assertIsNone(normalize_string(""))
         self.assertIsNone(normalize_string("   "))
 
     def test_strips_whitespace(self) -> None:
+        """Surrounding whitespace is stripped."""
         self.assertEqual(normalize_string("  hello  "), "hello")
 
 
@@ -69,12 +71,15 @@ class InstallDateTests(unittest.TestCase):
     """InstallDate normalization into ISO ``YYYY-MM-DD``."""
 
     def test_yyyymmdd(self) -> None:
+        """``YYYYMMDD`` becomes ISO ``YYYY-MM-DD``."""
         self.assertEqual(normalize_install_date("20260717"), "2026-07-17")
 
     def test_iso_passthrough(self) -> None:
+        """ISO dates pass through unchanged."""
         self.assertEqual(normalize_install_date("2026-07-17"), "2026-07-17")
 
     def test_invalid_dates_are_null(self) -> None:
+        """Malformed or impossible dates normalize to None."""
         self.assertIsNone(normalize_install_date(None))
         self.assertIsNone(normalize_install_date(""))
         self.assertIsNone(normalize_install_date("not-a-date"))
@@ -87,6 +92,7 @@ class SizeTests(unittest.TestCase):
     """EstimatedSize parsing and human-readable table formatting."""
 
     def test_parse_estimated_size(self) -> None:
+        """EstimatedSize accepts ints and digit strings; invalid or negative is None."""
         self.assertEqual(normalize_estimated_size_kb(850), 850)
         self.assertEqual(normalize_estimated_size_kb("1024"), 1024)
         self.assertIsNone(normalize_estimated_size_kb(None))
@@ -94,6 +100,7 @@ class SizeTests(unittest.TestCase):
         self.assertIsNone(normalize_estimated_size_kb(-5))
 
     def test_human_readable_formatting(self) -> None:
+        """Sizes render as KB, MB, or GB."""
         self.assertEqual(format_size_human(None), "")
         self.assertEqual(format_size_human(512), "512 KB")
         self.assertEqual(format_size_human(850 * 1024), "850 MB")
@@ -105,6 +112,7 @@ class SystemComponentTests(unittest.TestCase):
     """SystemComponent DWORD/string interpretation."""
 
     def test_system_component_flags(self) -> None:
+        """SystemComponent is truthy only for 1 / ``"1"``."""
         self.assertFalse(normalize_system_component(None))
         self.assertFalse(normalize_system_component(0))
         self.assertTrue(normalize_system_component(1))
@@ -115,6 +123,7 @@ class FilterTests(unittest.TestCase):
     """Default filters, update detection, search, and prepare_inventory."""
 
     def test_filters_missing_display_name(self) -> None:
+        """Blank display names are filtered out."""
         entries = [
             make_entry(name=""),
             make_entry(name="   "),
@@ -125,6 +134,7 @@ class FilterTests(unittest.TestCase):
         self.assertEqual([e.name for e in filtered], ["Valid App"])
 
     def test_hides_system_components_by_default(self) -> None:
+        """System components are hidden unless explicitly included."""
         entries = [
             make_entry(name="User App", system_component=False),
             make_entry(name="System Thing", system_component=True),
@@ -135,6 +145,7 @@ class FilterTests(unittest.TestCase):
         self.assertEqual({e.name for e in shown}, {"User App", "System Thing"})
 
     def test_hides_updates_by_default(self) -> None:
+        """Windows updates and hotfixes are hidden unless explicitly included."""
         entries = [
             make_entry(name="Chrome"),
             make_entry(name="KB5025221"),
@@ -148,11 +159,13 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(len(shown), 5)
 
     def test_update_detection_helpers(self) -> None:
+        """KB names and Hotfix release types count as updates; similar app names do not."""
         self.assertTrue(is_windows_update(make_entry(name="KB1234567")))
         self.assertTrue(is_windows_update(make_entry(name="App", release_type="Hotfix")))
         self.assertFalse(is_windows_update(make_entry(name="Update Helper Utility")))
 
     def test_case_insensitive_search(self) -> None:
+        """``search`` matches name, publisher, or version case-insensitively."""
         entries = [
             make_entry(name="Visual Studio", publisher="Microsoft", version="17.0"),
             make_entry(name="Firefox", publisher="Mozilla", version="128.0"),
@@ -169,6 +182,7 @@ class FilterTests(unittest.TestCase):
         self.assertFalse(matches_search(entries[1], "chrome"))
 
     def test_prepare_inventory_sorts_by_name(self) -> None:
+        """``prepare_inventory`` returns rows sorted by name."""
         entries = [
             make_entry(name="Zebra", registry_path="z"),
             make_entry(name="alpha", registry_path="a"),

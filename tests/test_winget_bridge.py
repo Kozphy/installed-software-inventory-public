@@ -64,10 +64,12 @@ class WingetBridgeTests(unittest.TestCase):
     """Matching, parsing, and import document construction."""
 
     def test_normalize_strips_trailing_version(self) -> None:
+        """Match keys drop trailing versions and extra whitespace."""
         self.assertEqual(normalize_match_key("CapCut 9.3.0"), "capcut")
         self.assertEqual(normalize_match_key("  Keep App  "), "keep app")
 
     def test_parse_winget_list_table(self) -> None:
+        """Fixed-width ``winget list`` output parses Ids, sources, and importability."""
         packages = parse_winget_list_table(SAMPLE_LIST)
         self.assertEqual(len(packages), 3)
         self.assertEqual(packages[0].package_id, "Contoso.KeepApp")
@@ -76,12 +78,14 @@ class WingetBridgeTests(unittest.TestCase):
         self.assertEqual(packages[2].source, "winget")
 
     def test_load_fixture_json(self) -> None:
+        """The offline winget list fixture loads as packages."""
         packages = load_winget_packages_json(WINGET_LIST_FIXTURE)
         self.assertGreaterEqual(len(packages), 3)
         ids = {pkg.package_id for pkg in packages}
         self.assertIn("Contoso.KeepApp", ids)
 
     def test_match_exact_and_versioned_name(self) -> None:
+        """Exact and version-suffixed names match; unknown apps stay unmatched."""
         packages = load_winget_packages_json(WINGET_LIST_FIXTURE)
         entries = [
             make_entry(name="Keep App", version="1.0.0", publisher="Contoso"),
@@ -96,6 +100,7 @@ class WingetBridgeTests(unittest.TestCase):
         self.assertEqual(unmatched_names, {"New Tool", "Canva"})
 
     def test_import_document_shape(self) -> None:
+        """The import document follows packages.schema.2.0 with pinned versions."""
         packages = [
             WingetPackage("Keep App", "Contoso.KeepApp", "1.0.0", "winget"),
         ]
@@ -113,6 +118,7 @@ class WingetBridgeTests(unittest.TestCase):
         self.assertIn("SourceDetails", document["Sources"][0])
 
     def test_empty_matches_yield_empty_sources(self) -> None:
+        """No matches produce an empty ``Sources`` list."""
         result = match_inventory_to_winget(
             [make_entry(name="Unknown")],
             [WingetPackage("Other", "Other.Id", source="winget")],
@@ -121,6 +127,7 @@ class WingetBridgeTests(unittest.TestCase):
         self.assertEqual(document["Sources"], [])
 
     def test_unmatched_markdown_and_export(self) -> None:
+        """Unmatched apps appear as checklist rows in the Markdown sidecar."""
         packages = load_winget_packages_json(WINGET_LIST_FIXTURE)
         entries = [
             make_entry(name="Keep App"),

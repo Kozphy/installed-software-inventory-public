@@ -49,16 +49,19 @@ class CliHarnessTests(unittest.TestCase):
     """End-to-end subprocess contract checks for the CLI harness."""
 
     def test_all_harness_cases_pass(self) -> None:
+        """Every harness case passes when run in-process."""
         code = HARNESS.run_harness()
         self.assertEqual(code, 0)
 
     def test_help_subprocess(self) -> None:
+        """``--help`` exits 0 and documents ``--from-json``."""
         result = HARNESS.run_cli(["--help"])
         self.assertEqual(result.returncode, 0)
         self.assertIn("--from-json", result.stdout)
         self.assertFalse(result.timed_out)
 
     def test_transcripts_are_written(self) -> None:
+        """Transcript stdout and metadata files are written per case."""
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "transcripts"
             result = HARNESS.run_cli(["--version"])
@@ -72,6 +75,7 @@ class LiveScanGuardTests(unittest.TestCase):
     """Ensure the skip-env guard prevents accidental live Registry access."""
 
     def test_skip_env_blocks_collect_from_registry(self) -> None:
+        """``SOFTWARE_INVENTORY_SKIP_LIVE_SCAN`` blocks a live Registry scan."""
         previous = os.environ.get("SOFTWARE_INVENTORY_SKIP_LIVE_SCAN")
         os.environ["SOFTWARE_INVENTORY_SKIP_LIVE_SCAN"] = "1"
         try:
