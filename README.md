@@ -315,6 +315,88 @@ name,version,publisher,install_date,install_location,estimated_size_kb,scope,arc
 Example Editor,1.2.3,Example Inc,2026-07-17,C:\Program Files\Example Editor,870400,machine,64-bit,C:\Program Files\Example Editor\uninstall.exe,C:\Program Files\Example Editor\uninstall.exe /S,HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ExampleEditor,,False
 ```
 
+## Roadmap and competitive review
+
+An interactive architecture and competitive review lives in
+[`docs/upgrade-review.canvas.tsx`](docs/upgrade-review.canvas.tsx). It is a
+[Cursor Canvas](https://cursor.com): open the file in Cursor to see the charts
+and tables. GitHub shows it as source only, so the key points are summarized
+here.
+
+### Capability scores (0–5, higher is better)
+
+```mermaid
+xychart-beta
+    title "Capability scores: this repo (bars) vs winget-cli (line)"
+    x-axis ["Coverage", "Reinstall", "Safety", "Snapshot/diff", "Eng quality", "Distribution"]
+    y-axis "Score (0-5)" 0 --> 5
+    bar [2, 3, 5, 5, 5, 2]
+    line [3, 5, 4, 1, 5, 5]
+```
+
+Bars are this repo (v1.2); the line is winget-cli. The table below compares
+all four tools.
+
+| Capability | This repo (v1.2) | winget-cli | AppList | swinv |
+|------------|:----------------:|:----------:|:-------:|:-----:|
+| Coverage | 2 | 3 | 5 | 5 |
+| Reinstall | 3 | 5 | 5 | 1 |
+| Safety (read-only) | 5 | 4 | 3 | 4 |
+| Snapshot / diff | 5 | 1 | 3 | 2 |
+| Engineering quality | 5 | 5 | 3 | 4 |
+| Distribution | 2 | 5 | 2 | 2 |
+
+Scores come from a local code review plus public READMEs (September 2026).
+
+### Similar projects
+
+| Project | Focus | Reinstall support | Writes to the system |
+|---------|-------|-------------------|----------------------|
+| This repo | Safe Uninstall-key audit, snapshots, diffs | winget import JSON + unmatched checklist | Never |
+| [microsoft/winget-cli](https://github.com/microsoft/winget-cli) | Official package manager | `winget export` / `winget import` | Installs and upgrades |
+| [SysAdminDoc/AppList](https://github.com/SysAdminDoc/AppList) | Migration and rebuild planning | winget JSON, install script, bundle | Optional removal scripts (dry-run default) |
+| [chaugan/swinv](https://github.com/chaugan/swinv) | Deep local discovery (Registry, Appx, filesystem) | Inventory only | Read-only by default |
+| NirSoft UninstallView | Interactive uninstall and cleanup | Not a goal | Can uninstall |
+
+### What this repo already does well
+
+- **Safety contract:** read-only Registry access, no network for scans, no
+  `Win32_Product`, and `SOFTWARE_INVENTORY_SKIP_LIVE_SCAN` enforced in the
+  collector and CI. The winget bridge only reads `winget list`; it never runs
+  `winget import`.
+- **Snapshot and diff design:** the deduplication key includes version, so
+  co-installed versions stay separate rows. The diff identity excludes version,
+  so upgrades show up as Changed instead of remove plus add.
+- **Testability:** 66 unit tests and 15 CLI process harness cases run against
+  fixtures. `--from-json` and `--winget-list` work offline, and CI covers
+  Python 3.10–3.13 on Windows.
+- **Reinstall workflow:** a winget import JSON for catalog apps, plus a
+  Markdown checklist for everything winget cannot match.
+
+### Architecture and remaining gaps
+
+| Layer | Today | Gap to close |
+|-------|-------|--------------|
+| Collector | `windows_registry` only | No Appx / package-manager collectors |
+| Normalize | Dedupe key includes version; filters updates and system components | No source tags; a blank `install_location` weakens identity |
+| Report | v1.1 envelope with privacy-aware scan metadata | No checked-in JSON Schema file validated in CI |
+| Diff | Identity = name + publisher + install location (version excluded) | A publisher rename or path move shows as remove + add |
+| Export | table / JSON / CSV / winget import + unmatched checklist | Winget matching uses display names only; no HTML summary |
+| Ops | PowerShell runner: JSON/CSV, latest/previous, auto-diff, winget pair | No Task Scheduler template; no PyPI release yet |
+
+### Roadmap
+
+| ID | Item | Status |
+|----|------|--------|
+| P0 | Winget reinstall bridge (`--format winget`) | Done in v1.2.0 |
+| P1 | Read-only Appx / MSIX collector so Store apps appear | Next |
+| P2 | Collector protocol, per-entry source tags, JSON Schema 2.0 checked in CI | Planned |
+| P3 | Stronger diff identity and publisher-aware winget matching | Planned |
+| P4 | PyPI release and better discoverability | Planned |
+
+Non-goals: querying `Win32_Product`, silent uninstall or automatic
+`winget import`, and full-filesystem scanning.
+
 ## Project layout
 
 ```text
@@ -325,6 +407,8 @@ installed-software-inventory/
 ├── pyproject.toml
 ├── .gitignore
 ├── .github/workflows/ci.yml
+├── docs/
+│   └── upgrade-review.canvas.tsx
 ├── scripts/
 │   ├── run_inventory.ps1
 │   └── run_cli_harness.py
@@ -350,6 +434,7 @@ installed-software-inventory/
     ├── test_registry_parsing.py
     ├── test_report.py
     ├── test_diff.py
+    ├── test_winget_bridge.py
     └── test_cli_harness.py
 ```
 
