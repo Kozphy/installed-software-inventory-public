@@ -1,0 +1,122 @@
+src/software_inventory/__init__.py
+  s_8be233f68cc00b::t_79ba26a46c7b98 8-10,13,18
+src/software_inventory/collectors/windows_appx.py
+  s_8be233f68cc00b::t_4451dd2a38cfff 1-19,22-85,88,95-418
+  s_8be233f68cc00b::t_cba5cf9e0ed8b7 20-21
+  s_8be233f68cc00b::t_d115f167a4db41 86-87,89-94
+tests/test_appx_collector.py
+  s_8be233f68cc00b::t_d4211aab225ca4 1-225,233-396
+  s_8be233f68cc00b::t_82af6d5204be27 226-232
+scripts/run_cli_harness.py
+  s_8be233f68cc00b::t_85bd583de0c4f4 549-574,581-585
+  s_8be233f68cc00b::t_5fc8c4bdebd038 35
+  s_8be233f68cc00b::t_9e509113b6337d 377,381-383,389
+  s_8be233f68cc00b::t_2f409ee0bd4238 666
+  s_8be233f68cc00b::t_4bfb6947484db0 181
+  s_8be233f68cc00b::t_9138c7d51430d3 196,201-202,548,586
+  s_8be233f68cc00b::t_0d153a1002a9a9 327-365
+tests/test_report.py
+  s_8be233f68cc00b::t_e9fb1c4991fba2 220-234
+  s_8be233f68cc00b::t_5a9ed80717d1f1 130,133
+  s_8be233f68cc00b::t_7554f9c5a16428 159
+tests/fixtures/cli/mixed-sources.json
+  s_8be233f68cc00b::t_fe10ad95827c87 1-98
+pyproject.toml
+  s_8be233f68cc00b::t_ffd668e9a770f4 7
+docs/upgrade-review.canvas.tsx
+  s_8be233f68cc00b::t_14381df84cda97 32-33
+  s_8be233f68cc00b::t_69816b43e01dbd 156,158,163-164,166
+  s_8be233f68cc00b::t_148c1e5f3391ab 287-289
+  s_8be233f68cc00b::t_75bef637970e63 59
+  s_8be233f68cc00b::t_103dab3e2c6ff9 307
+  s_8be233f68cc00b::t_6b16f1b94f50bb 105-106,110-111,115,120-121
+  s_8be233f68cc00b::t_2d4134f994e8ec 209,212-213,215,223,228-231
+  s_8be233f68cc00b::t_3badeac3aea9e8 369-370,374
+README.md
+  s_8be233f68cc00b::t_63b60ac3e1e1a4 186
+  s_8be233f68cc00b::t_b068b2f8a29e5f 140-141
+  s_8be233f68cc00b::t_bd841175e2ba10 57-58
+  s_8be233f68cc00b::t_1cad5aeecf32d2 318,320
+  s_8be233f68cc00b::t_194c45b001a140 116
+  s_8be233f68cc00b::t_29e978fc6ea62c 347,351,354,356
+  s_8be233f68cc00b::t_449715414efe2e 442-443
+  s_8be233f68cc00b::t_1892da41800bce 99-101
+  s_8be233f68cc00b::t_3e9471f31ad852 124
+  s_8be233f68cc00b::t_8a06832dc9f8c4 269
+  s_8be233f68cc00b::t_2f88fd3d035411 298-300,302,304-306
+  s_8be233f68cc00b::t_82c2ccff0fe954 377-380
+  s_8be233f68cc00b::t_5c763adf807801 369
+  s_8be233f68cc00b::t_fb029b79269707 394-397
+  s_8be233f68cc00b::t_779ce1658a579f 80
+  s_8be233f68cc00b::t_f864adaed4f55d 85-86
+  s_8be233f68cc00b::t_9cd77c3c85606a 126,132
+  s_8be233f68cc00b::t_ea39f493d64162 384
+  s_8be233f68cc00b::t_784689a8cbf2ad 453
+  s_8be233f68cc00b::t_0593594149b40b 285,287-288,290
+  s_8be233f68cc00b::t_dbf4fd03b52fea 163-164,170
+  s_8be233f68cc00b::t_0fde25652eb3e8 328-329
+  s_8be233f68cc00b::t_becfc09603dee4 406-407
+  s_8be233f68cc00b::t_f18ab678f67f4b 112
+  s_8be233f68cc00b::t_eb0e9fe4f19a1a 5,9,13-14
+src/software_inventory/cli.py
+  s_8be233f68cc00b::t_c9af822d888d39 34-38
+  s_8be233f68cc00b::t_947fd57228046c 357-362
+  s_8be233f68cc00b::t_35b0d1d29a0ade 551-552
+  s_8be233f68cc00b::t_f3f097ce3679d2 294
+  s_8be233f68cc00b::t_1e806a95802ec7 16-18
+  s_8be233f68cc00b::t_5c9f3a65665724 104-106,110-117
+  s_8be233f68cc00b::t_e62335feca90af 319-320,322
+  s_8be233f68cc00b::t_1dda8d9710219e 587
+  s_8be233f68cc00b::t_3fdbebeb675b91 7-8,118-119
+  s_8be233f68cc00b::t_87c00c54a16ae1 335,337-340
+src/software_inventory/collectors/__init__.py
+  s_8be233f68cc00b::t_598696a2ee5a41 4-5,8,14-18,23-84,86-93
+src/software_inventory/normalize.py
+  s_8be233f68cc00b::t_e1bbf3d152bf8e 31
+  s_8be233f68cc00b::t_934a8eb01d1840 517,520
+  s_8be233f68cc00b::t_b1403bd8e34edb 393-446
+  s_8be233f68cc00b::t_b72b32f5164428 8
+src/software_inventory/models.py
+  s_8be233f68cc00b::t_bcab3068e7766f 78
+  s_8be233f68cc00b::t_65f947f73965ea 133,135-138
+  s_8be233f68cc00b::t_1e457e9e9b6111 101-104,108
+  s_8be233f68cc00b::t_36e72220dbe15f 55-56,58-62
+  s_8be233f68cc00b::t_5c438099ff10a2 31-32
+  s_8be233f68cc00b::t_ee955f5f60fcd2 9-11
+  s_8be233f68cc00b::t_4b2c58b4ceb8cc 19-26
+src/software_inventory/exporters.py
+  s_8be233f68cc00b::t_9bc95f3b84c492 97
+  s_8be233f68cc00b::t_2ced743784e036 42
+src/software_inventory/diff.py
+  s_8be233f68cc00b::t_ebe281e54dad1b 173-175,177-179
+  s_8be233f68cc00b::t_2d4ce6304fd0a3 54-59
+  s_8be233f68cc00b::t_25e0ee1b782baa 33,36,39
+  s_8be233f68cc00b::t_6892fea9ef4caf 17-20
+CHANGELOG.md
+  s_8be233f68cc00b::t_8c2c4d48ccb685 10-39
+src/software_inventory/report.py
+  s_8be233f68cc00b::t_f9aef33ab0e74d 311
+  s_8be233f68cc00b::t_520cfb8bad69a2 263
+  s_8be233f68cc00b::t_9b42f7056361a4 4-5
+  s_8be233f68cc00b::t_88b38bacf56944 12-14
+  s_8be233f68cc00b::t_fdcb40c173b60f 23,25-26
+  s_8be233f68cc00b::t_b27fc23f676e5a 199
+  s_8be233f68cc00b::t_a8bfa56c0b0889 224
+  s_8be233f68cc00b::t_ba3386443085bb 285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34efeb05d506ca185c5b6d1e7be65de77f33d22a",
+  "prompts": {},
+  "sessions": {
+    "s_8be233f68cc00b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b10a6d2c-5aa0-48cf-b950-39d5d4ac1e8a",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
