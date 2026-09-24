@@ -1,0 +1,60 @@
+scripts/run_inventory.ps1
+  s_8be233f68cc00b::t_39fe2025d83395 76,78-83,85-89
+  s_8be233f68cc00b::t_9ff764dfaab47b 77,84
+tests/test_winget_bridge.py
+  s_8be233f68cc00b::t_61862ea3bacfd2 1-149
+src/software_inventory/exporters.py
+  s_8be233f68cc00b::t_1c6be7c696517a 2,6,8,29-33
+  s_8be233f68cc00b::t_bb0f94370e0ad4 327-361
+tests/fixtures/cli/winget-list.json
+  s_8be233f68cc00b::t_1dbc38e0d2b2e6 1-26
+README.md
+  s_8be233f68cc00b::t_a18207c55b5261 53-54
+  s_8be233f68cc00b::t_e7f33894d9d6a6 5
+  s_8be233f68cc00b::t_5074c4dbb05eb2 173-203
+  s_8be233f68cc00b::t_e039367c7a3b76 224-225
+  s_8be233f68cc00b::t_f9f5e8cf3166dd 307
+  s_8be233f68cc00b::t_aa55daef47d270 341
+  s_8be233f68cc00b::t_185ce06e88174f 75,83-85
+scripts/run_cli_harness.py
+  s_8be233f68cc00b::t_c9524fc4d76cd6 283-323
+  s_8be233f68cc00b::t_fd1244315b6f17 488-502
+  s_8be233f68cc00b::t_223b229d0637e6 583-588
+  s_8be233f68cc00b::t_3b1934bd6f6818 34,487
+src/software_inventory/winget_bridge.py
+  s_8be233f68cc00b::t_75df2010c71b18 564,566
+  s_8be233f68cc00b::t_cbec042a242504 1-164,166-174,207-300,302-308,313-522,524-563,565
+  s_8be233f68cc00b::t_3537f983b890c7 165,175-206
+  s_8be233f68cc00b::t_aa56e759dd9bad 301,309-312
+  s_8be233f68cc00b::t_1cfea1b895c288 523
+pyproject.toml
+  s_8be233f68cc00b::t_fefe9eb0d1aec2 7
+src/software_inventory/cli.py
+  s_8be233f68cc00b::t_d1c1b9a1d50792 365
+  s_8be233f68cc00b::t_353834fc5f8846 7,16,34-40,43-48,155,424-427,434-436
+  s_8be233f68cc00b::t_25aa5a01037d7b 105,107-110
+  s_8be233f68cc00b::t_1c6c3edd59978f 534-536,557-559
+  s_8be233f68cc00b::t_0f78ce6735ddad 156-179
+  s_8be233f68cc00b::t_2e218beb0dfde9 274-276,290,297-300,361-364,366-369,380-423,428-433
+CHANGELOG.md
+  s_8be233f68cc00b::t_85a3f7e9b92876 10-11,14-21,30-34
+src/software_inventory/__init__.py
+  s_8be233f68cc00b::t_c78c0d8e30d0d6 18
+  s_8be233f68cc00b::t_2a73868137578d 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a18448cc8e9e15fce68388b8675da75c335f721d",
+  "prompts": {},
+  "sessions": {
+    "s_8be233f68cc00b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b10a6d2c-5aa0-48cf-b950-39d5d4ac1e8a",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
