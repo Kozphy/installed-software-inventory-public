@@ -1,0 +1,50 @@
+tests/test_exporters.py
+  s_8be233f68cc00b::t_c8e99c7366a464 74,86,94,109,119,129,134
+tests/test_normalize.py
+  s_8be233f68cc00b::t_c8e99c7366a464 60,66,74,78,82,95,103,115,126,137,148,162,168,185
+tests/test_registry_parsing.py
+  s_8be233f68cc00b::t_c8e99c7366a464 19,47,66
+src/software_inventory/winget_bridge.py
+  s_8be233f68cc00b::t_34de9a32a0138d 51-60,106
+  s_8be233f68cc00b::t_506d007e8108b9 491-503
+  s_8be233f68cc00b::t_75fab0d5a3ca1d 634-642
+  s_8be233f68cc00b::t_cb197ac8301221 90-96
+  s_8be233f68cc00b::t_c18cc3aaefe80f 71-74
+  s_8be233f68cc00b::t_3f0772bbbf4d0c 142-148
+  s_8be233f68cc00b::t_57e984653ec1a9 258-270
+  s_8be233f68cc00b::t_6509a4efaf0c97 289-299
+  s_8be233f68cc00b::t_a95313ba3de61f 222-233
+  s_8be233f68cc00b::t_ed7ec64ad88549 104-105,107-111,119-124,129-134
+src/software_inventory/cli.py
+  s_8be233f68cc00b::t_f0758c247d0964 417-426
+tests/test_report.py
+  s_8be233f68cc00b::t_6b2cc51a507e6c 62
+  s_8be233f68cc00b::t_c8e99c7366a464 115,138,148,169,184,205,214,220,230,239,247,253,258,263
+tests/test_deduplication.py
+  s_8be233f68cc00b::t_c8e99c7366a464 49,71,85,93,115
+tests/test_diff.py
+  s_8be233f68cc00b::t_c8e99c7366a464 59,65,83,114,129,137,153,176,185,197,206,215,247
+tests/test_cli_harness.py
+  s_8be233f68cc00b::t_c8e99c7366a464 52,57,64,78
+tests/test_appx_collector.py
+  s_8be233f68cc00b::t_39e8d653a9c04d 244
+  s_8be233f68cc00b::t_c8e99c7366a464 121,128,137,152,156,164,170,175,179,184,193,205,209,213,217,226,232,252,259,272,274,282,305,309,320,332,341,351,360,366,372,378,385,395,409,416,425
+tests/test_winget_bridge.py
+  s_8be233f68cc00b::t_c8e99c7366a464 67,72,81,88,103,121,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "989ddaedc6f1140272d47dd5fe4f696afc8b7273",
+  "prompts": {},
+  "sessions": {
+    "s_8be233f68cc00b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b10a6d2c-5aa0-48cf-b950-39d5d4ac1e8a",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
