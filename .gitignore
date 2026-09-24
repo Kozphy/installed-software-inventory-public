@@ -7,9 +7,13 @@ __pycache__/
 # Distribution / packaging
 build/
 dist/
+wheels/
+*.whl
 *.egg-info/
 .eggs/
 *.egg
+pip-wheel-metadata/
+MANIFEST
 
 # Virtual environments
 .venv/
@@ -17,27 +21,44 @@ venv/
 env/
 ENV/
 
-# Test / coverage
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Test / coverage / type checking
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .tox/
+.nox/
+.hypothesis/
 .mypy_cache/
+.dmypy.json
 .ruff_cache/
 
 # IDE / editor
 .idea/
 .vscode/
+.vs/
+*.code-workspace
 *.swp
 *.swo
 *~
 
 # OS
 Thumbs.db
+ehthumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 .DS_Store
 
 # Project outputs
+# Inventory snapshots contain personal machine data; never publish them.
 reports/
 harness-output/
 *.log
+# Cursor Canvas persisted UI state.
+*.canvas.data.json
