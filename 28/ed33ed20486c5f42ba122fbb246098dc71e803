@@ -1,0 +1,24 @@
+docs/upgrade-review.canvas.tsx
+  s_8be233f68cc00b::t_f346102a028a82 1-378
+README.md
+  s_8be233f68cc00b::t_ccd79db5e27a3a 328-339
+  s_8be233f68cc00b::t_e2c251168abb29 361-386
+  s_8be233f68cc00b::t_0c13d3cd63308e 437
+  s_8be233f68cc00b::t_b8ab8f25f23a5c 318-327,340-360,387-399,410-411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "28ed33ed20486c5f42ba122fbb246098dc71e803",
+  "prompts": {},
+  "sessions": {
+    "s_8be233f68cc00b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b10a6d2c-5aa0-48cf-b950-39d5d4ac1e8a",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
